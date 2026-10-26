@@ -327,11 +327,13 @@ final class MileageCalculatorTests: XCTestCase {
     }
 
     func testFourthAprilYearEndIsPricedAsTheTaxYear() throws {
-        let period = try DatePeriod(start: CivilDate(2025, 4, 5), end: CivilDate(2026, 4, 4))
-        let claim = try MileageCalculator.claim(trips: [trip(CivilDate(2025, 4, 5), 100)],
+        // 5 April 2026 is in 2025–26 at 45p, but the whole year is priced as 2026–27.
+        let period = try DatePeriod(start: CivilDate(2026, 4, 5), end: CivilDate(2027, 4, 4))
+        let claim = try MileageCalculator.claim(trips: [trip(CivilDate(2026, 4, 5), 10_000)],
                                                 vehicles: [car], period: period, table: table)
-        XCTAssertEqual(claim.figures.map(\.taxYear), [TaxYear(startYear: 2025)])
-        XCTAssertEqual(claim.totalPounds, 45)
+        XCTAssertEqual(claim.figures.map(\.taxYear), [TaxYear(startYear: 2026)])
+        XCTAssertFalse(claim.needsRateSplit)
+        XCTAssertEqual(claim.totalPounds, Decimal(string: "5500.00"))
     }
 
     func testUnknownVehicleOutsidePeriodIsIgnored() throws {
