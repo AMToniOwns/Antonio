@@ -145,6 +145,11 @@ public struct DatePeriod: Hashable, Sendable {
         return lo <= hi ? hi.dayNumber - lo.dayNumber + 1 : 0
     }
 
+    /// True when the period ends 31 March to 4 April, which HMRC treats as ending on 5 April.
+    public var endsOnTaxYearEquivalent: Bool {
+        (end.month == 3 && end.day == 31) || (end.month == 4 && end.day <= 5)
+    }
+
     /// Tax years this period touches, earliest first.
     public var taxYears: [TaxYear] {
         let first = TaxYear(containing: start).startYear
@@ -153,8 +158,8 @@ public struct DatePeriod: Hashable, Sendable {
     }
 }
 
-/// The day and month a business's accounting year ends on. Most sole traders use 5 April
-/// (or 31 March, which HMRC treats the same way for basis periods).
+/// The day and month a business's accounting year ends on. Most sole traders use 5 April or
+/// 31 March; HMRC treats any year end from 31 March to 4 April as 5 April.
 public struct AccountingYearEnd: Hashable, Codable, Sendable {
     public let month: Int
     public let day: Int
@@ -174,6 +179,13 @@ public struct AccountingYearEnd: Hashable, Codable, Sendable {
         self.month = month
         self.day = day
     }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(month: c.decode(Int.self, forKey: .month), day: c.decode(Int.self, forKey: .day))
+    }
+
+    private enum CodingKeys: String, CodingKey { case month, day }
 
     /// The 12-month accounting period that contains `date`.
     public func period(containing date: CivilDate) -> DatePeriod {

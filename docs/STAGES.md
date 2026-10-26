@@ -24,17 +24,20 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 | 2026-10-26 | Tax years after the last published rates use the latest rates and are flagged provisional (`ratesConfirmedThroughTaxYear`) | Keeps the total useful without hiding that HMRC hasn't confirmed it. |
 | 2026-10-26 | CSV exports have one line per trip; per-trip pennies reconcile exactly to the claim total (largest remainder) | FreeAgent's mileage import and audit trail. |
 | 2026-10-26 | Keep the plan's apportionment method; exports name it (`ApportionmentMethod.explanation`) | Pending accountant sign-off alongside threshold scope. |
+| 2026-10-26 | Year ends 31 March to 4 April are priced wholly in the tax year they fall in | HMRC treats them as 5 April since basis-period reform (council round 2). |
+| 2026-10-26 | "To confirm" counts every unconfirmed trip, business or personal | Its business/personal label is only a guess until reviewed. |
 | 2026-10-26 | Rates start 6 April 2013 | Simplified expenses for unincorporated businesses began then (council round 1). |
 | 2026-10-26 | Package needs Xcode 16 / Swift 5.9+ tools; iOS 18 minimum written as `.iOS("18.0")` | Council round 1: `.v18` needs tools 6.0. |
 
 ## Owner actions (can't be done from code)
 
 - [ ] Request the D-U-N-S number (critical path for the company Apple account)
-- [ ] Ask an accountant, before 9 Nov: (a) is the 10,000-mile threshold across all vehicles or per vehicle; (b) is the apportionment method right for years not ending 5 April (31 Dec example: 10,000 miles → £5,239.73 vs £4,500 by trip date); (c) do miles on actual-costs vehicles count towards the threshold (currently no)
+- [ ] Ask an accountant, before 9 Nov: (a) is the 10,000-mile threshold across all vehicles or per vehicle; (b) is the apportionment method right for years not ending 5 April (31 Dec example: 10,000 miles → £5,239.73 vs £4,500 by trip date); (c) do miles on actual-costs vehicles count towards the threshold (currently no); (d) for a year not ending 5 April, is the 10,000 miles counted over the accounting year (as coded) or per tax year; (e) does a short first period get the full 10,000 miles (currently yes)
 - [ ] Recruit 8 testers (at least 3 real sole traders) before 9 Nov
 
 ## Council log
 
 | Stage | Round | Votes | Blocks fixed |
 |---|---|---|---|
+| 0 | 2 | 4 approve, 1 block | Year ends 31 Mar – 4 Apr weren't treated as 5 April (basis-period rule); also: unknown vehicles outside the period, validated year-end decoding, non-finite miles, confirmed-through year vs latest set |
 | 0 | 1 | 1 approve, 4 block | Manifest `.iOS(.v18)` on tools 5.9; `Decimal(Double)` noise in metres → miles; silent use of unpublished rates; tax-year rows didn't show weights or reconcile; no test run yet |

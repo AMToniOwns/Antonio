@@ -58,6 +58,16 @@ final class RateTableTests: XCTestCase {
         }
     }
 
+    func testRejectsConfirmedYearBeforeLatestRateSet() {
+        let set = RateSet(effectiveFrom: CivilDate(2027, 4, 6),
+                          carVan: .init(firstBandPencePerMile: 55, thresholdMiles: 10_000, afterThresholdPencePerMile: 25),
+                          motorcyclePencePerMile: 24)
+        XCTAssertThrowsError(try RateTable(rulesVersion: "x", thresholdScope: .aggregate,
+                                           ratesConfirmedThroughTaxYear: 2026, rateSets: [set])) {
+            XCTAssertEqual($0 as? ClaimError, .ratesConfirmedBeforeLatestRateSet)
+        }
+    }
+
     func testRejectsUnknownSchema() {
         let json = #"{"schemaVersion":2,"rulesVersion":"x","thresholdScope":"aggregate","ratesConfirmedThroughTaxYear":2026,"rateSets":[]}"#
         XCTAssertThrowsError(try RateTable.load(from: Data(json.utf8))) {

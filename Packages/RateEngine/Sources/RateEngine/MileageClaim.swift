@@ -86,7 +86,8 @@ public struct BandedFigure: Hashable, Sendable {
     public let motorcycleMiles: Decimal
     /// Unrounded pounds for the whole period's miles at this tax year's rates.
     public let poundsBeforeApportioning: Decimal
-    /// Days of the period inside this tax year.
+    /// Days of the period priced in this tax year. For a year ending 31 March to 4 April this is
+    /// the whole period.
     public let overlapDays: Int
     /// `overlapDays` divided by the period's length.
     public let dayShare: Decimal
@@ -124,7 +125,7 @@ public struct MileageClaim: Hashable, Sendable {
     public let trips: [TripAllocation]
     /// The claim in pounds, rounded once to the penny.
     public let totalPounds: Decimal
-    /// Trips in the period that the user hasn't confirmed yet. They aren't counted.
+    /// Trips in the period that the user hasn't confirmed yet, business or personal. They aren't counted.
     public let unconfirmedTripCount: Int
     public let unconfirmedMiles: Decimal
     /// Confirmed business miles left out because the vehicle can't use flat rates.
@@ -156,6 +157,8 @@ public enum ClaimError: Error, Equatable {
     case unknownVehicle(String)
     case duplicateVehicle(String)
     case negativeMiles(tripID: String)
+    case invalidMiles(tripID: String)
+    case ratesConfirmedBeforeLatestRateSet
     case noRates(for: TaxYear?)
     case rateSetNotOnTaxYearStart(CivilDate)
     case duplicateRateSet
@@ -195,9 +198,12 @@ public enum MileageCalculator {
         var excluded: [String: Decimal] = [:]
 
         for trip in trips {
+            guard trip.miles.isFinite else { throw ClaimError.invalidMiles(tripID: trip.id) }
             guard trip.miles >= 0 else { throw ClaimError.negativeMiles(tripID: trip.id) }
-            guard let vehicle = vehiclesByID[trip.vehicleID] else { throw ClaimError.unknownVehicle(trip.vehicleID) }
+            // Old trips on a since-deleted vehicle mustn't break other periods.
             guard period.contains(trip.date) else { continue }
+            guard let vehicle = vehiclesByID[trip.vehicleID] else { throw ClaimError.unknownVehicle(trip.vehicleID) }
+            // Counted whatever their business/personal guess: the user hasn't reviewed them yet.
             if !trip.isConfirmed {
                 unconfirmedCount += 1
                 unconfirmedMiles += trip.miles
@@ -212,7 +218,13 @@ public enum MileageCalculator {
         }
         counted.sort { ($0.trip.date, $0.trip.id) < ($1.trip.date, $1.trip.id) }
 
-        let taxYears = period.taxYears
+        // Since basis-period reform, a year ending 31 March to 4 April is treated as ending on
+        // 5 April, so it's priced wholly in that tax year. Otherwise each tax year it touches
+        // is weighted by its days.
+        let pricing: [(taxYear: TaxYear, days: Int)] = period.endsOnTaxYearEquivalent
+            ? [(TaxYear(containing: period.end), period.dayCount)]
+            : period.taxYears.map { ($0, period.overlapDays(with: $0.period)) }
+        let taxYears = pricing.map(\.taxYear)
         let yearRates = try taxYears.map { try table.rates(for: $0) }
         // validate() guarantees every set has the same threshold.
         let threshold = yearRates[0].carVan.thresholdMiles
@@ -237,7 +249,7 @@ public enum MileageCalculator {
         let motorcycle = splits.reduce(0) { $0 + $1.motorcycle }
 
         // Pence × days for each mile type, summed over tax years; divided once at the end.
-        let days = taxYears.map { Decimal(period.overlapDays(with: $0.period)) }
+        let days = pricing.map { Decimal($0.days) }
         let divisor = Decimal(100 * period.dayCount)
         func weightedPence(_ f: Decimal, _ a: Decimal, _ m: Decimal) -> Decimal {
             zip(yearRates, days).reduce(0) { sum, pair in
@@ -257,7 +269,7 @@ public enum MileageCalculator {
             let pence = first * rates.carVan.firstBandPencePerMile
                 + after * rates.carVan.afterThresholdPencePerMile
                 + motorcycle * rates.motorcyclePencePerMile
-            let overlap = period.overlapDays(with: taxYear.period)
+            let overlap = pricing[index].days
             let isLast = index == taxYears.count - 1
             let row = isLast ? total - rowsSoFar : roundToPenny(pence * Decimal(overlap) / divisor, .plain)
             rowsSoFar += row
@@ -273,7 +285,7 @@ public enum MileageCalculator {
         // Per-trip rows, reconciled to the total by largest remainder.
         let exact = splits.map { weightedPence($0.first, $0.after, $0.motorcycle) / divisor }
         var pounds = exact.map { roundToPenny($0, .down) }
-        var leftoverPennies = NSDecimalNumber(decimal: (total - pounds.reduce(0, +)) * 100).intValue
+        var leftoverPennies = Int(truncating: NSDecimalNumber(decimal: roundToPenny((total - pounds.reduce(0, +)) * 100, .plain)))
         let byRemainder = exact.indices.sorted {
             let (a, b) = (exact[$0] - pounds[$0], exact[$1] - pounds[$1])
             return a != b ? a > b : $0 < $1

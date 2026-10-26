@@ -312,6 +312,47 @@ final class MileageCalculatorTests: XCTestCase {
         XCTAssertEqual(claim.totalPounds, Decimal(string: "6470.00")) // 10,000 × 55p + 1,000 × 25p + 3,000 × 24p
     }
 
+    // MARK: Added after council round 2
+
+    func testThirtyFirstMarchYearEndIsPricedAsTheTaxYear() throws {
+        let yearEnd = try AccountingYearEnd(month: 3, day: 31)
+        let claim = try MileageCalculator.claim(forAccountingPeriodContaining: CivilDate(2026, 6, 1), yearEnd: yearEnd,
+                                                trips: [trip(CivilDate(2026, 4, 2), 10_000)],
+                                                vehicles: [car], table: table)
+        XCTAssertEqual(claim.period, try DatePeriod(start: CivilDate(2026, 4, 1), end: CivilDate(2027, 3, 31)))
+        XCTAssertEqual(claim.figures.map(\.taxYear), [TaxYear(startYear: 2026)])
+        XCTAssertEqual(claim.figures.map(\.overlapDays), [365])
+        XCTAssertFalse(claim.needsRateSplit)
+        XCTAssertEqual(claim.totalPounds, Decimal(string: "5500.00"))
+    }
+
+    func testFourthAprilYearEndIsPricedAsTheTaxYear() throws {
+        let period = try DatePeriod(start: CivilDate(2025, 4, 5), end: CivilDate(2026, 4, 4))
+        let claim = try MileageCalculator.claim(trips: [trip(CivilDate(2025, 4, 5), 100)],
+                                                vehicles: [car], period: period, table: table)
+        XCTAssertEqual(claim.figures.map(\.taxYear), [TaxYear(startYear: 2025)])
+        XCTAssertEqual(claim.totalPounds, 45)
+    }
+
+    func testUnknownVehicleOutsidePeriodIsIgnored() throws {
+        let claim = try taxYearClaim(2026, [trip(CivilDate(2024, 5, 1), 10, "deleted"),
+                                            trip(CivilDate(2026, 5, 1), 10)])
+        XCTAssertEqual(claim.totalPounds, Decimal(string: "5.50"))
+    }
+
+    func testNonFiniteMilesThrows() {
+        let bad = trip(CivilDate(2026, 5, 1), .nan)
+        XCTAssertThrowsError(try taxYearClaim(2026, [bad])) {
+            XCTAssertEqual($0 as? ClaimError, .invalidMiles(tripID: bad.id))
+        }
+    }
+
+    func testStoredYearEndIsValidatedOnDecode() throws {
+        XCTAssertThrowsError(try JSONDecoder().decode(AccountingYearEnd.self, from: Data(#"{"month":2,"day":29}"#.utf8)))
+        let decoded = try JSONDecoder().decode(AccountingYearEnd.self, from: Data(#"{"month":3,"day":31}"#.utf8))
+        XCTAssertEqual(decoded, try AccountingYearEnd(month: 3, day: 31))
+    }
+
     func testInvalidYearEnd() {
         XCTAssertThrowsError(try AccountingYearEnd(month: 2, day: 29))
         XCTAssertThrowsError(try AccountingYearEnd(month: 13, day: 1))

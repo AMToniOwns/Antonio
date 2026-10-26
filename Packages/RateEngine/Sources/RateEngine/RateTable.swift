@@ -91,6 +91,9 @@ public struct RateTable: Codable, Sendable {
         guard Set(rateSets.map(\.effectiveFrom)).count == rateSets.count else {
             throw ClaimError.duplicateRateSet
         }
+        guard ratesConfirmedThroughTaxYear >= TaxYear(containing: rateSets.last!.effectiveFrom).startYear else {
+            throw ClaimError.ratesConfirmedBeforeLatestRateSet
+        }
         // Per-trip band splits assume one threshold for every tax year.
         guard Set(rateSets.map(\.carVan.thresholdMiles)).count == 1 else {
             throw ClaimError.thresholdChangesBetweenRateSets
