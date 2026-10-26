@@ -2,13 +2,16 @@
   "schemaVersion": 1,
   "rulesVersion": "2026-04-06",
   "thresholdScope": "aggregate",
+  "ratesConfirmedThroughTaxYear": 2026,
+  "ratesConfirmedThroughNote": "Start year of the last tax year whose rates HMRC has published. Later years use the latest rates and are flagged provisional.",
   "thresholdScopeNote": "Unconfirmed: HMRC's BIM75005 example uses one total across vehicles. Confirm with HMRC or an accountant before launch.",
   "rateSets": [
     {
-      "effectiveFrom": "2011-04-06",
+      "effectiveFrom": "2013-04-06",
       "carVan": { "firstBandPencePerMile": 45, "thresholdMiles": 10000, "afterThresholdPencePerMile": 25 },
       "motorcyclePencePerMile": 24,
-      "source": "https://www.gov.uk/hmrc-internal-manuals/business-income-manual/bim75005"
+      "source": "https://www.gov.uk/hmrc-internal-manuals/business-income-manual/bim75005",
+      "note": "Simplified expenses for unincorporated businesses start on 6 April 2013."
     },
     {
       "effectiveFrom": "2026-04-06",

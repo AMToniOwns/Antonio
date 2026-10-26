@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "RateEngine",
-    platforms: [.iOS(.v18), .macOS(.v14)],
+    platforms: [.iOS("18.0"), .macOS("14.0")],
     products: [
         .library(name: "RateEngine", targets: ["RateEngine"])
     ],

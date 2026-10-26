@@ -15,10 +15,10 @@ public struct CivilDate: Hashable, Comparable, Sendable, Codable, CustomStringCo
         self.day = day
     }
 
-    /// Parses `YYYY-MM-DD`.
+    /// Parses `YYYY-MM-DD`, zero-padded.
     public init?(iso string: String) {
-        let parts = string.split(separator: "-")
-        guard parts.count == 3,
+        let parts = string.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3, parts.map(\.count) == [4, 2, 2],
               let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]),
               (1...12).contains(m), (1...CivilDate.daysIn(month: m, year: y)).contains(d)
         else { return nil }
@@ -56,6 +56,26 @@ public struct CivilDate: Hashable, Comparable, Sendable, Codable, CustomStringCo
         let doy = (153 * mp + 2) / 5 + day - 1
         let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
         return era * 146_097 + doe - 719_468
+    }
+
+    /// The date `dayNumber` days after 1970-01-01, after Howard Hinnant's `civil_from_days`.
+    public init(dayNumber: Int) {
+        let z = dayNumber + 719_468
+        let era = (z >= 0 ? z : z - 146_096) / 146_097
+        let doe = z - era * 146_097
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        let mp = (5 * doy + 2) / 153
+        let d = doy - (153 * mp + 2) / 5 + 1
+        let m = mp < 10 ? mp + 3 : mp - 9
+        self.init(yoe + era * 400 + (m <= 2 ? 1 : 0), m, d)
+    }
+
+    public func adding(days: Int) -> CivilDate { CivilDate(dayNumber: dayNumber + days) }
+
+    /// The same date a year later; 29 February moves to 1 March.
+    public var oneYearLater: CivilDate {
+        month == 2 && day == 29 ? CivilDate(year + 1, 3, 1) : CivilDate(year + 1, month, day)
     }
 
     public static func < (lhs: CivilDate, rhs: CivilDate) -> Bool {
@@ -130,5 +150,36 @@ public struct DatePeriod: Hashable, Sendable {
         let first = TaxYear(containing: start).startYear
         let last = TaxYear(containing: end).startYear
         return (first...last).map(TaxYear.init(startYear:))
+    }
+}
+
+/// The day and month a business's accounting year ends on. Most sole traders use 5 April
+/// (or 31 March, which HMRC treats the same way for basis periods).
+public struct AccountingYearEnd: Hashable, Codable, Sendable {
+    public let month: Int
+    public let day: Int
+
+    public static let taxYear = AccountingYearEnd(uncheckedMonth: 4, day: 5)
+
+    public init(month: Int, day: Int) throws {
+        // 29 February doesn't exist every year, so it can't be a year end.
+        guard (1...12).contains(month), (1...CivilDate.daysIn(month: month, year: 2027)).contains(day) else {
+            throw ClaimError.invalidYearEnd
+        }
+        self.month = month
+        self.day = day
+    }
+
+    private init(uncheckedMonth month: Int, day: Int) {
+        self.month = month
+        self.day = day
+    }
+
+    /// The 12-month accounting period that contains `date`.
+    public func period(containing date: CivilDate) -> DatePeriod {
+        var end = CivilDate(date.year, month, day)
+        if end < date { end = CivilDate(date.year + 1, month, day) }
+        let start = CivilDate(end.year - 1, month, day).adding(days: 1)
+        return DatePeriod(uncheckedStart: start, end: end)
     }
 }
