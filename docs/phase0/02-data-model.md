@@ -73,23 +73,29 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
 | routePolyline | Data? | simplified (Douglas–Peucker, ~25 m tolerance), for the map |
 | pointsPurgeAfter | Date? | see 2.4 |
 | mergedIntoID | UUID? | set only by a *user* merge (history); never by deduplication |
+| userEditedFields | [String] | fields the user changed by hand (late-edit rule 6, Profile-style protection) |
 
 **Duplicates** (council D6). Two different things are kept apart here. A *user merge* is something the user does, and it is stored. *Deduplication* is something the app works out, and it is **never stored in a synced field**. Keeping the two apart is what stops two phones from fighting over which copy is the duplicate.
 
 1. **The same ID arriving twice through sync.** The container uses `NSMergeByPropertyObjectTrumpMergePolicy`, so conflicting writes are resolved property by property and the newest write wins. How CloudKit imports interact with that policy is **(verify)**.
 2. **Duplicates are matched in pairs and worked out fresh on every pass; nothing is stored.** After every local write and every CloudKit import, the app checks pairs of trips. Two trips are duplicates only when **each covers more than 50% of the other's time range** (mutual overlap). Matches don't chain: trip A matching B, and B matching C, does not make A and C duplicates. Deleted, `inProgress` and user-merged trips are skipped.
 
-   **Which copy wins** (the representative): confirmed beats manual, manual beats detected or assisted, and those beat recovered. On a tie, the earliest `createdAt` wins, then the lowest UUID.
+   **The full order** sets which copy wins and gives every trip a strict place:
+   1. category: confirmed beats manual, manual beats detected or assisted, and those beat recovered;
+   2. within a category, the earliest `createdAt`;
+   3. then the lowest UUID.
 
-   A trip that matches several others is suppressed in favour of its single best partner: the largest overlap wins, with the same tie-breaks. Every suppressed trip therefore maps to exactly one representative.
+   "Outranks" always means "earlier in the full order", tie-breaks included, so no two trips ever rank equal.
+
+   A trip is suppressed only by a partner that outranks it. If it matches several such partners, the largest overlap wins, then the full order. A suppressed trip's representative is found by following "suppressed by" links up to a trip that isn't suppressed. Each link points to a trip that outranks the one before it, so the chain always ends, and every suppressed trip resolves to exactly one representative.
 
    The result lives only in a `LocalOnly` cache, `suppressedBy`, which is rebuilt from scratch each time.
-3. **Coverage by several trips.** A trip can be covered by several shorter trips without a pairwise match. Examples: a long recovered trip spanning two confirmed drives, or another phone's unsplit copy of a drive this phone split in two. When more than 50% of a trip's time range is covered by the combined higher-ranked trips:
+3. **Coverage by several trips.** A trip can be covered by several shorter trips without a pairwise match. Examples: a long recovered trip spanning two confirmed drives, or another phone's unsplit copy of a drive this phone split in two. Coverage is the **union of the time ranges** (not the sum) of the trips that **outrank it** in the full order and aren't themselves suppressed. When that union covers more than 50% of the trip's time range:
    - if the covered trip is **unconfirmed**, it is suppressed;
    - if it is **confirmed**, it is flagged "Possible duplicate — check" and **not counted** until the user keeps or deletes it.
 
    This can only make a claim smaller, never larger.
-4. **Conflicting confirmations.** Two confirmed copies in one pair disagree when their classification differs or their miles differ by more than 5%. They then count for nothing until the user picks one ("2 copies of a trip disagree — choose one"), and the choice tombstones the other copy. Within that tolerance, the representative wins silently. A class pre-filled by a rule or a default never counts as a confirmation.
+4. **Conflicting confirmations.** Two confirmed copies in one pair disagree when their classification or vehicle differs, or their miles differ by more than 5%. A different vehicle matters because cars and motorcycles have different rates. If only the purpose or notes differ, the representative's are kept, and the other copy's text is shown on the trip detail under "Other copy said…". They then count for nothing until the user picks one ("2 copies of a trip disagree — choose one"), and the choice tombstones the other copy. Within that tolerance, the representative wins silently. A class pre-filled by a rule or a default never counts as a confirmation.
 5. **What each screen uses.**
    - **Counted** (RateEngine, totals, exports): confirmed representatives and confirmed unmatched trips, but not trips flagged under rules 3 or 4.
    - **Review list:** unconfirmed representatives and unconfirmed unmatched trips, plus anything flagged under rules 3 or 4.
@@ -97,10 +103,10 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
    - **Deleting a representative** asks "Delete both copies?", so the suppressed copy can't quietly start counting again.
 6. **User merge and split** are explicit and stored.
    - **Merge:** the earlier trip is extended. Its original end, distance and polyline are kept in a `mergeUndo` record, and the later trip is tombstoned with `mergedIntoID`.
-   - **Merge undo:** restores the earlier trip from `mergeUndo` and un-tombstones the later trip.
+   - **Merge undo:** restores the earlier trip from `mergeUndo` and un-tombstones the later trip. It's available while the tombstone exists, which is 30 days.
    - **Split:** the parent is tombstoned and two children are created, with time ranges that don't overlap.
    - **Split undo:** tombstones the children and restores the parent.
-   - **Edits that arrive late:** an edit can sync in for a trip that is already merged away, for example a purpose set offline on the other phone. The app shows "An edit arrived for a merged trip". It copies the edit to the surviving trip wherever that trip has no value the user set.
+   - **Edits that arrive late:** an edit can sync in for a trip that is already merged away, for example a purpose set offline on the other phone. The app shows "An edit arrived for a merged trip". It copies the edit to the surviving trip for any field the user hasn't edited there. Journey keeps a `userEditedFields` set for this.
 7. **Totals** are calculated, never synced, so a duplicate that slips through briefly can't corrupt a stored total.
 8. **Profile duplicates.** CloudKit has no unique constraints, so two phones could each create a Profile.
    - **Avoid them:** on first launch with iCloud available, onboarding shows "Looking for your Mile Log data…" and waits for the first CloudKit import (up to 30 s). Only then does it create a Profile.

@@ -39,6 +39,7 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 
 | Stage | Round | Votes | Blocks fixed |
 |---|---|---|---|
+| Phase 0 pack | 5 | 4 approve, 1 block | "Higher-ranked" undefined for equal-status copies (50/50 split vs confirmed unsplit copy double-counted); now a strict total order with union coverage |
 | Phase 0 pack | 4 | 4 approve, 1 block | Overlap groups chained, so split children or a long recovered trip could swallow real trips; now mutual pairwise matching plus a conservative union-coverage rule, miles tolerance, delete-both, undo records |
 | Phase 0 pack | 3 | 4 approve, 1 block | Dedupe stored in synced mergedIntoID could loop across phones; now derived each pass, LocalOnly; conflicting confirmations prompt the user; device ID in Keychain ThisDeviceOnly |
 | Phase 0 pack | 2 | 3 approve, 2 block | Duplicate-merge tie-break and merged trips counted; tracking-device handover on a new phone and duplicate Profile rows |
