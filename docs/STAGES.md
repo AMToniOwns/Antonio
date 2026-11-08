@@ -6,12 +6,12 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 | Stage | Window | Deliverable | Status |
 |---|---|---|---|
 | 0. Setup | 26 Oct – 1 Nov | Repo, RateEngine package with D7 tests | Council approved (5/5, round 3). Exit gate open: `swift test` green |
-| 1. Detection | 2 – 8 Nov | TripDetection package (frozen end of week), prototype app with debug timeline | Not started |
-| 2. Test run | 9 Nov – 8 Dec | 200 reference drives, 21+ days, odometer-checked | Not started |
-| 2b. v1 in parallel | 9 Nov – 8 Dec | Core Data store, review screen, exports, paywall | Not started |
-| 3. Go/no-go | 30 Nov – 9 Dec | Report against the thresholds | Not started |
-| 4. Beta | 10 – 20 Dec | TestFlight | Not started |
-| 5. Launch | 28 Dec – 31 Jan | App Store | Not started |
+| 1. Detection (now Phase 1a/1b, see docs/phase0) | 11 Nov – 2 Dec | TripDetection package (frozen end of week), prototype app with debug timeline | Not started |
+| 2. Test run | from 3 Dec | 200 reference drives, 21+ days, odometer-checked | Not started |
+| 2b. v1 in parallel | 3 Dec – 8 Jan | Core Data store, review screen, exports, paywall | Not started |
+| 3. Go/no-go | ~24 Dec – 6 Jan | Report against the thresholds | Not started |
+| 4. Beta | 25 Jan – 12 Feb | TestFlight | Not started |
+| 5. Launch | mid-Feb – mid-Mar 2027 | App Store | Not started |
 
 ## Decisions taken during the build
 
@@ -32,13 +32,14 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 ## Owner actions (can't be done from code)
 
 - [ ] Request the D-U-N-S number (critical path for the company Apple account)
-- [ ] Ask an accountant, before 9 Nov: (a) is the 10,000-mile threshold across all vehicles or per vehicle; (b) is the apportionment method right for years not ending 5 April (31 Dec example: 10,000 miles → £5,239.73 vs £4,500 by trip date); (c) do miles on actual-costs vehicles count towards the threshold (currently no); (d) for a year not ending 5 April, is the 10,000 miles counted over the accounting year (as coded) or per tax year; (e) does a short first period get the full 10,000 miles (currently yes); (f) we assume no one elects out of treating a 31 March – 4 April year end as 5 April — fine?
-- [ ] Recruit 8 testers (at least 3 real sole traders) before 9 Nov
+- [ ] Ask an accountant, before the go/no-go (~24 Dec): (a) is the 10,000-mile threshold across all vehicles or per vehicle; (b) is the apportionment method right for years not ending 5 April (31 Dec example: 10,000 miles → £5,239.73 vs £4,500 by trip date); (c) do miles on actual-costs vehicles count towards the threshold (currently no); (d) for a year not ending 5 April, is the 10,000 miles counted over the accounting year (as coded) or per tax year; (e) does a short first period get the full 10,000 miles (currently yes); (f) we assume no one elects out of treating a 31 March – 4 April year end as 5 April — fine?
+- [ ] Recruit 8 testers (at least 3 real sole traders) — by 25 Nov, see docs/phase0/README.md "Owner actions"
 
 ## Council log
 
 | Stage | Round | Votes | Blocks fixed |
 |---|---|---|---|
+| Phase 0 pack | 1 | 0 approve, 5 block | Live-layer API generations mixed; wake budget; CloudKit constraints (route points, dedupe, schema); Live Activity can't start from background; two-iPhone double count; rule example was commuting; App Group store; roadmap not credible; plain-English decisions, free/paid matrix, fallback, dated owner actions |
 | 0 | 3 | 5 approve | — (4 April year-end test strengthened) |
 | 0 | 2 | 4 approve, 1 block | Year ends 31 Mar – 4 Apr weren't treated as 5 April (basis-period rule); also: unknown vehicles outside the period, validated year-end decoding, non-finite miles, confirmed-through year vs latest set |
 | 0 | 1 | 1 approve, 4 block | Manifest `.iOS(.v18)` on tools 5.9; `Decimal(Double)` noise in metres → miles; silent use of unpublished rates; tax-year rows didn't show weights or reconcile; no test run yet |
