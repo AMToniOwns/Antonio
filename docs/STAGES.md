@@ -6,7 +6,7 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 | Stage | Window | Deliverable | Status |
 |---|---|---|---|
 | 0. Setup | 26 Oct – 1 Nov | Repo, RateEngine package with D7 tests | Council approved (5/5, round 3). Exit gate open: `swift test` green |
-| 1. Detection (now Phase 1a/1b, see docs/phase0) | 11 Nov – 2 Dec | TripDetection package (frozen at 1b), prototype app with debug timeline | TripDetection written (td-0.1.0), council review pending; not compiled yet |
+| 1. Detection (now Phase 1a/1b, see docs/phase0) | 11 Nov – 2 Dec | TripDetection package (frozen at 1b), prototype app with debug timeline | TripDetection td-0.2.0 after council round 1 (5 blocks fixed); round 2 pending; not compiled yet |
 | 2. Test run | from 3 Dec | 200 reference drives, 21+ days, odometer-checked | Not started |
 | 2b. v1 in parallel | 3 Dec – 8 Jan | Core Data store, review screen, exports, paywall | Not started |
 | 3. Go/no-go | ~24 Dec – 6 Jan | Report against the thresholds | Not started |
@@ -41,6 +41,7 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 
 | Stage | Round | Votes | Blocks fixed |
 |---|---|---|---|
+| TripDetection | 1 | 0 approve, 5 block | Trip couldn't end without a slow fix (parked phone sends none); stale relaunch/late fix joined trips across hours; unvalidated late visits ended trips; evidence stamped with old motion times; assisted candidates timed out; stale lastStop used as start; walking after parking counted; timer not cancelled on abandon; speed −1 never stopped |
 | Phase 0 pack | 6 | **5 approve** | — (split children share createdAt; extra Phase 2 dedupe tests) |
 | Phase 0 pack | 5 | 4 approve, 1 block | "Higher-ranked" undefined for equal-status copies (50/50 split vs confirmed unsplit copy double-counted); now a strict total order with union coverage |
 | Phase 0 pack | 4 | 4 approve, 1 block | Overlap groups chained, so split children or a long recovered trip could swallow real trips; now mutual pairwise matching plus a conservative union-coverage rule, miles tolerance, delete-both, undo records |

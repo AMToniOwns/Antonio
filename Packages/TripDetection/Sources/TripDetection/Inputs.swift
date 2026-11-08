@@ -88,7 +88,10 @@ public enum Authorization: String, Codable, Sendable {
 /// Everything the platform layer tells the detector. Each event carries the time it was
 /// delivered, so the detector never reads a clock and replays are exact.
 public enum DetectionEvent: Hashable, Codable, Sendable {
+    /// The OS woke the app because the phone moved (or the user started assisted mode).
     case wake(WakeReason, at: Date)
+    /// The process started (any reason) and restored its state. Send first, before any other
+    /// event; send `.wake` as well if the launch was caused by a location event.
     case relaunched(at: Date)
     case fix(LocationFix, receivedAt: Date)
     case motion(MotionSample, receivedAt: Date)
@@ -102,5 +105,11 @@ public enum DetectionEvent: Hashable, Codable, Sendable {
 }
 
 public enum TimerID: String, Codable, Sendable {
-    case candidateTimeout, stopTimeout
+    /// Ends a candidate that never shows driving evidence.
+    case candidateTimeout
+    /// Ends a trip that has been stopped for `stopTimeout`.
+    case stopTimeout
+    /// Ends a trip when fixes stop arriving altogether: a parked phone with a distance filter
+    /// sends nothing, so no "stopped" fix ever comes.
+    case silenceWatchdog
 }

@@ -22,16 +22,26 @@ import Testing
         #expect(trip.to == b)
     }
 
-    @Test func driveCoveredByAKnownTripIsNotRecovered() {
+    @Test func fullyCoveredDriveIsNotRecovered() {
         let history = [sample(10, [.automotive]), sample(30, [.walking])]
-        let known = [DateInterval(start: t0 + 9 * 60, end: t0 + 25 * 60)] // 15 of 20 minutes
+        let known = [DateInterval(start: t0 + 9 * 60, end: t0 + 31 * 60)]
         #expect(RecoveryPlanner.recover(history: history, knownTrips: known, visits: [], now: t0 + 3600).isEmpty)
     }
 
-    @Test func mostlyUncoveredDriveIsRecovered() {
+    @Test func onlyTheUncoveredPartIsRecovered() throws {
         let history = [sample(10, [.automotive]), sample(30, [.walking])]
-        let known = [DateInterval(start: t0 + 10 * 60, end: t0 + 15 * 60)] // 5 of 20 minutes
-        #expect(RecoveryPlanner.recover(history: history, knownTrips: known, visits: [], now: t0 + 3600).count == 1)
+        let known = [DateInterval(start: t0 + 9 * 60, end: t0 + 25 * 60)] // live tracking began late... and ended early
+        let found = RecoveryPlanner.recover(history: history, knownTrips: known, visits: [], now: t0 + 3600)
+        let piece = try #require(found.first)
+        #expect(found.count == 1)
+        #expect(piece.start == t0 + 25 * 60)
+        #expect(piece.end == t0 + 30 * 60)
+    }
+
+    @Test func uncoveredSliverShorterThanTheMinimumIsDropped() {
+        let history = [sample(10, [.automotive]), sample(30, [.walking])]
+        let known = [DateInterval(start: t0 + 9 * 60, end: t0 + 28 * 60)] // 2 minutes left over
+        #expect(RecoveryPlanner.recover(history: history, knownTrips: known, visits: [], now: t0 + 3600).isEmpty)
     }
 
     @Test func shortAndLowConfidenceRunsAreIgnored() {
@@ -40,8 +50,8 @@ import Testing
         #expect(RecoveryPlanner.recover(history: history, knownTrips: [], visits: [], now: t0 + 3600).isEmpty)
     }
 
-    @Test func runsSplitByABriefStopAreOneDrive() throws {
-        let history = [sample(0, [.automotive]), sample(10, [.stationary]), sample(11, [.automotive]), sample(20, [.walking])]
+    @Test func runsSplitByAJamAreOneDrive() throws {
+        let history = [sample(0, [.automotive]), sample(10, [.stationary]), sample(14, [.automotive]), sample(20, [.walking])]
         let found = RecoveryPlanner.recover(history: history, knownTrips: [], visits: [], now: t0 + 3600)
         let trip = try #require(found.first)
         #expect(found.count == 1)
