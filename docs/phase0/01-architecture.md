@@ -13,10 +13,10 @@
 |---|---|---|---|
 | Language | Swift 6 | **Swift 6, strict concurrency on in new packages.** RateEngine stays Swift 5 mode until its first green run, then flips. | Data-race safety matters most in the tracking engine, where CLLocationManager callbacks, background relaunch and persistence interleave. |
 | UI | SwiftUI, MVVM | **SwiftUI with `@Observable` view models, one per screen, thin.** | `@Observable` (iOS 17+) removes most Combine plumbing. "Massive view model" risk is handled by pushing logic into packages, not by adding layers (no coordinators/VIPER). |
-| Minimum iOS | "select during planning" | **iOS 18** (council D1), with iOS 26 features behind `#available` checks. | iOS 18 gives `CLServiceSession`, `CLMonitor`, and `CLBackgroundActivitySession` with `CLLocationUpdate` (A/B tested against classic `CLLocationManager`, §3.2). Tradespeople keep their phones longer. How many more people iOS 17 would reach is unknown **(verify with adoption data at launch)**. |
+| Minimum iOS | "select during planning" | **iOS 18** (council D1), with iOS 26 features behind `#available` checks. | `CLServiceSession` is new in iOS 18. `CLMonitor`, `CLLocationUpdate` and `CLBackgroundActivitySession` arrived in iOS 17. So iOS 18's tracking advantage over iOS 17 is narrow: mainly `CLServiceSession`, plus the iOS 18 fixes to the iOS 17 APIs. The classic `CLLocationManager` baseline (§3.2) works on both. Tradespeople keep their phones longer. How many more people iOS 17 would reach is unknown **(verify with adoption data at launch)**. |
 | Persistence | SwiftData "or another" | **Core Data** (council D6). | Core Data's migration tooling is mature for local data. It supports separate configurations, so GPS points stay on the phone while other records sync (§2.2). Background contexts let the tracker write without touching the main thread. Developers have reported SwiftData migration and CloudKit problems **(verify against current release notes)**. Caveats: once the iCloud schema is in production it can only be added to, in either framework, and Core Data needs more code. It sits behind a `JourneyStore` protocol, so a later move is contained. |
 | Sync | Supabase | **v1: iCloud private database via `NSPersistentCloudKitContainer`. Supabase deferred until a feature needs a server** (accountant portal, web dashboard, Business tier). | See 1.4 — the largest disagreement with the spec. |
-| Auth | Supabase Auth | **None in v1.** Sign in with Apple when a backend arrives. | No account = no password reset, no credential storage, no account-takeover surface, faster onboarding, and a marketing line ("No account. Your data stays on your phone"). |
+| Auth | Supabase Auth | **None in v1.** Sign in with Apple when a backend arrives. | No account = no password reset, no credential storage, no account-takeover surface, faster onboarding, and a marketing line ("No account. Your data stays on your phone and in your own iCloud"). |
 | Payments | RevenueCat | **StoreKit 2 directly in v1.** RevenueCat when a second platform (web) needs entitlements. | One platform, two products, no server: StoreKit 2's `Transaction.currentEntitlements` covers it with zero dependencies and no third-party data sharing. RevenueCat's value (cross-platform entitlement sync, dashboards, paywall experiments) arrives with the backend. Its free allowance for small apps **(verify current pricing)** makes switching later cheap. |
 | Maps | MapKit | **MapKit** for showing routes, the reverse geocoder (`CLGeocoder`, or MapKit's newer geocoding API on iOS 26 **(verify which to use)**) with cached, coarse results (street and town), and `MKDirections` for estimated distances. | No third-party map SDK. |
 | Tests | Swift Testing | **Swift Testing for new packages; XCTest kept where it exists and for UI tests.** | Both run in one `swift test`. Rewriting RateEngine's tests buys nothing. |
@@ -50,7 +50,7 @@ Antonio/
    └─ Entitlements/                 free/pro feature map; StoreKit adapter lives in app Platform/
 ```
 
-**Shared store:** the Core Data store lives in an App Group container from the first build, so the widget, Live Activity and App Intents share it (§2.2).
+**Shared store:** the Core Data store lives in an App Group container from the first build, so the widget, Live Activity and App Intents share it. Only the app process runs CloudKit mirroring. Extensions open the store without the CloudKit option, read-only where they can **(verify)** (§2.2).
 
 **Dependency rule:** `Features → (JourneyDomain, RateEngine, Reporting, Entitlements) → nothing`; `Platform` adapters implement protocols declared in packages. Only `AppMain` knows concrete types (manual constructor injection; no DI framework).
 
@@ -62,7 +62,7 @@ The spec puts Supabase, Supabase Auth and RLS in the MVP (acceptance criteria 1 
 
 | | Local-first v1 (recommended) | Supabase in v1 (spec) |
 |---|---|---|
-| Time to launch | Fits the Jan/Feb 2027 window | Adds auth, schema, RLS, sync, conflict handling, account deletion: ~4–6 weeks |
+| Time to launch | Fits the mid-Feb to mid-Mar 2027 window (§6.4) | Adds auth, schema, RLS, sync, conflict handling, account deletion: ~4–6 weeks |
 | GDPR | You process almost nothing: data is on the device and in the user's own iCloud | You become controller of continuous location history: DPIA, retention enforcement server-side, breach exposure, sub-processor list |
 | Running cost | £0 | Free tier, then $25/month+ before revenue |
 | Onboarding | No sign-up (plan: setup < 2 minutes) | Registration step before first trip |

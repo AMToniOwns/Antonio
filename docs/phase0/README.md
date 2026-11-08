@@ -41,10 +41,10 @@ This pack answers the *Mile Log — Master Product & Development Specification* 
 ## Decisions needed, in plain English
 
 **D-A. Accounts and a server in v1?** *Recommended: no.*
-- **No:** users don't sign up. Their trips stay on their iPhone and in their own iCloud. It launches sooner (about 4–6 weeks less work) and runs at no cost. The privacy promise ("no account, your data stays on your phone") becomes a selling point. It can't offer an accountant login or a web dashboard until a server is added later.
+- **No:** users don't sign up. Their trips stay on their iPhone and in their own iCloud. It launches sooner (about 4–6 weeks less work) and runs at no cost. The privacy promise ("no account, your data stays on your phone and in your own iCloud") becomes a selling point. It can't offer an accountant login or a web dashboard until a server is added later.
 - **Yes:** users sign up. You hold everyone's location history, with the GDPR duties that brings: a privacy impact assessment, breach risk and data-retention enforcement. Hosting costs about $25 a month or more once the free tier runs out. It enables a web dashboard and accountant access, but it delays launch.
 
-**D-B. What's free, and what's paid?** *Recommended: column 2.*
+**D-B. What's free, and what's paid?** *Recommended: the split in this table.*
 
 | Feature | Free | Pro (£34.99 a year or £3.99 a month) |
 |---|---|---|
@@ -53,13 +53,15 @@ This pack answers the *Mile Log — Master Product & Development Specification* 
 | Business miles so far, and progress to 10,000 miles | ✓ | ✓ |
 | Journey history and map | ✓ | ✓ |
 | Export all my data (JSON, a legal right under UK GDPR) | ✓ | ✓ |
+| Basic trips CSV: date, from, to, miles, class, purpose; no £ (D-E) | ✓ | ✓ |
+| Saved places (Home, customers), used to spot commuting | ✓ | ✓ |
 | **£ claim total** on Today and the widget | — | ✓ |
 | FreeAgent CSV and generic CSV with £ per trip | — | ✓ |
 | PDF for your accountant | — | ✓ |
-| Saved-place rules | — | ✓ |
+| Saved-place *rules* that pre-fill a trip's class | — | ✓ |
 | Snapshots, and "your figure changed since you exported it" alerts | — | ✓ |
 
-The alternative is the spec's journey-limited free tier. Free users would stop logging, and then have no history worth paying for at tax time.
+**What Pro sells:** free users can work out their claim themselves (miles × 55p, then 25p). Pro sells *not having to*: the £ figure kept up to date, files their software and accountant accept as they are, alerts when an exported figure changes, and rules that save taps. That's convenience, priced at about £3 a month. Whether it's enough is the plan's open bet (about a 23% chance of reaching the target). The month-12 target already assumes this. The alternative is the spec's journey-limited free tier. Free users would stop logging, and then have no history worth paying for at tax time.
 
 **D-C. How long are detailed GPS trails kept?** *Recommended: 30 days after a trip is confirmed, on the phone only.*
 After that only a simplified route line and the start and end points remain. The cost is that old trips can't be re-measured, and future features such as CO₂ and fuel estimates can't use them. The alternative is to keep trails forever, which means more risk and more storage.
@@ -87,7 +89,8 @@ If trips can't be detected reliably even after one fix cycle, Mile Log stops bei
 | Apple Developer Program membership (personal) | 18 Nov | TestFlight |
 | Recruit 8 testers (at least 3 sole traders); collect Apple IDs and consent | 25 Nov | Phase 1b |
 | Request a D-U-N-S number for the company Apple account | now (it can take weeks) | Phase 4 |
-| Accountant answers to the six questions in [../STAGES.md](../STAGES.md) | before go/no-go (~24 Dec) | launch |
+| Accountant answers to the six questions in [../STAGES.md](../STAGES.md). They're written for the accountant, so forward them unchanged. | before go/no-go (~24 Dec) | launch |
+| Two iPhones for device checks (one on iOS 18, one on iOS 26), own or borrowed | 11 Nov | Phase 1a |
 
 ## Questions for you
 
@@ -114,4 +117,9 @@ If trips can't be detected reliably even after one fix cycle, Mile Log stops bei
 | App Group | A shared storage area that lets the widget read the app's data |
 | StoreKit 2 | Apple's in-app purchase system |
 | TestFlight | Apple's system for giving testers pre-release builds |
-| D1–D9 | Decisions from the council's build plan (D1 iOS 18, D2 detection, D3 missed trips, D5 battery, D6 storage, D7 rate engine, D8 debug screen) |
+| D1–D9 | Decisions from the council's build plan: D1 iOS 18, D2 detection, D3 missed trips, D4 testing (8 testers, 200 drives), D5 battery, D6 storage, D7 rate engine, D8 debug screen, D9 go/no-go thresholds |
+| Tax year | 6 April to 5 April. Mileage rates change on 6 April |
+| Self Assessment | the yearly tax return sole traders file online by 31 January |
+| MTD (Making Tax Digital) | HMRC's move to digital records and quarterly updates. It applies from April 2026 to sole traders over £50k, and from April 2027 to those over £30k |
+| AMAP | the mileage allowance employers pay employees (e.g. company directors), with its own rules. Out of scope for v1 |
+| Claim total | the mileage expense the user puts on their return: miles × HMRC's rates |

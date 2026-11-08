@@ -39,6 +39,7 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 
 | Stage | Round | Votes | Blocks fixed |
 |---|---|---|---|
+| Phase 0 pack | 2 | 3 approve, 2 block | Duplicate-merge tie-break and merged trips counted; tracking-device handover on a new phone and duplicate Profile rows |
 | Phase 0 pack | 1 | 0 approve, 5 block | Live-layer API generations mixed; wake budget; CloudKit constraints (route points, dedupe, schema); Live Activity can't start from background; two-iPhone double count; rule example was commuting; App Group store; roadmap not credible; plain-English decisions, free/paid matrix, fallback, dated owner actions |
 | 0 | 3 | 5 approve | — (4 April year-end test strengthened) |
 | 0 | 2 | 4 approve, 1 block | Year ends 31 Mar – 4 Apr weren't treated as 5 April (basis-period rule); also: unknown vehicles outside the period, validated year-end decoding, non-finite miles, confirmed-through year vs latest set |

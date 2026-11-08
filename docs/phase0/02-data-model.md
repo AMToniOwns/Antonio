@@ -27,14 +27,20 @@
 - relationships are optional;
 - once the schema is deployed to production it can only be **added to** (no renames or deletions), so the v1 schema is reviewed with that in mind.
 
-Coordinate fields use `allowsCloudEncryption` (encrypted with the user's iCloud keys). Whether Advanced Data Protection makes them end-to-end is **(verify)**.
+**Encrypted fields:** `allowsCloudEncryption` (encrypted with the user's iCloud keys) is set on `startCoordinate`, `endCoordinate`, `startLabel`, `endLabel`, `routePolyline`, `customerName`, `purpose`, `notes`, and Place `centre`/`name`. It must be decided before the first production schema deploy, because it probably can't be changed afterwards **(verify)**. Whether Advanced Data Protection makes these fields end-to-end encrypted is **(verify)**.
 
 All IDs are UUIDs generated on the device. Every `Synced` entity carries `createdAt`, `updatedAt`, `deletedAt?` and `deviceID`. `deletedAt` is a tombstone, so deletions sync through CloudKit, and through a future backend too.
 
-**Profile** (single row)
+**Profile** (one logical row; see duplicates rule 5)
 `id, displayName?, businessName?, businessType (enum), accountingYearEndMonth, accountingYearEndDay, homePlaceID?, onboardingCompletedAt?, analyticsOptIn (Bool), rulesetID ("uk-hmrc-flat"), distanceUnit (miles|km), trackingDeviceID`
 
-`rulesetID`, `timeZoneID` and `currency` cost nothing now and keep other countries possible later. `trackingDeviceID` names the one phone that detects trips, so someone with two iPhones on one Apple ID doesn't log every drive twice.
+`rulesetID`, `timeZoneID` and `currency` cost nothing now and keep other countries possible later.
+
+**Tracking device.** `trackingDeviceID` names the one phone that detects trips, so someone with two iPhones on one Apple ID doesn't log every drive twice.
+- **The device ID** is a random UUID made on first launch and stored in the `LocalOnly` configuration. It is not `identifierForVendor`, which changes on reinstall. A reinstall therefore counts as a new device.
+- **On every launch**, if this phone isn't the tracking device, the app asks: "Track trips on this iPhone? (Your other iPhone, *name*, will stop.)" The prompt appears in onboarding, in Settings → Tracking, and on Today. When `trackingDeviceID` is empty (first install), the phone takes the role silently.
+- **Today's health line:** "This iPhone isn't tracking trips. Tap to switch." It replaces the slow "last trip 9 days ago" warning as the signal after a phone upgrade.
+- **The old phone** sees the change through sync and stops its wake layer.
 
 **Vehicle**
 `id, nickname, vehicleClass (carOrVan|motorcycle), make?, model?, registration?, expenseMethod (flatRate|actualCosts), capitalAllowancesClaimed (Bool), isDefault (Bool), archivedAt?`
@@ -66,8 +72,15 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
 
 **Duplicates** (council D6) are removed in code after every local write and every CloudKit import:
 1. **The same ID** arriving twice through sync: merge, newest `updatedAt` wins.
-2. **The same drive recorded twice**: two trips whose time ranges overlap by more than 50% of the shorter one, on any device and from any source, are treated as one. A confirmed or manual trip beats a detected one, and a detected trip beats a recovered one. The losing trip is marked `mergedIntoID`, never silently deleted. Matching on overlapping time ranges replaces the start-time-rounding key, which missed duplicates either side of a rounding boundary.
-3. **Totals** are calculated, never synced, so a duplicate that slips through for a moment can't corrupt a stored total.
+2. **The same drive recorded twice:** two trips are treated as one when their time ranges overlap by more than 50% of the shorter trip, whatever device or source they came from. The winner is picked the same way on every device:
+   1. a confirmed or manual trip beats a detected one, and a detected trip beats a recovered one;
+   2. on a tie, the trip with the earliest `createdAt` wins;
+   3. if that also ties, the lowest UUID wins.
+
+   The loser is marked `mergedIntoID` and kept, never silently deleted. If the loser was confirmed, its classification and purpose are copied onto the winner first, unless the winner already has its own. A trip is never merged into a trip that has itself been merged; the chain is followed to its root first. Because the result is the same on every device, two phones importing each other's copy reach the same answer.
+3. **What counts:** RateEngine input, totals, exports and the review list all **exclude any trip with `mergedIntoID` set**.
+4. **Totals** are calculated, never synced, so a duplicate that slips through for a moment can't corrupt a stored total.
+5. **Profile** is meant to be a single row, but CloudKit has no unique constraints, so two phones can each create one. The oldest `createdAt` wins, then the lowest UUID. Fields set only on the losing row are copied across before it is tombstoned.
 
 **RoutePoint** (`LocalOnly`): `journeyID, timestamp, lat, lon, horizontalAccuracy, speed?`, batch-inserted and deleted at purge. Because it never syncs, a second device shows only the simplified route.
 

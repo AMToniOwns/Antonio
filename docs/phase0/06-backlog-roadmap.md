@@ -60,6 +60,8 @@
 
 **Capacity rule:** if the test run triggers the two-week fix-and-remeasure cycle, that work comes before every v1 feature, and the v1 dates move.
 
+**Cut order if Phase 1a or Phase 2 overruns** (the Must list fitting in about 4 working weeks beside the test run is an **(estimate)**): first the PDF summary moves to v1.1 (the CSVs cover the accountant); then the merge/split UI (delete and manual add remain); then the sync health line, but not the iCloud-off warning on Today.
+
 ## 6.3 Spec phase order vs recommended order
 
 The spec builds authentication (phase 2) before tracking (phase 3), and the mileage engine at phase 5. The recommendation is to **de-risk tracking first**, because it decides the go/no-go, and to drop authentication from v1.
@@ -87,6 +89,7 @@ Every phase ends with passing tests and a council review. The next phase doesn't
 |---|---|---|
 | `download.swift.org` allowed in this environment | 10 Nov | to compile and test the packages here |
 | A Mac with Xcode 16 or later, and someone to build on it | 11 Nov | the app target, device checks and TestFlight uploads |
+| Two iPhones for the device checks: one on iOS 18 and one on iOS 26 (iOS can't be downgraded) | 11 Nov | the Phase 1a device checklist |
 | Apple Developer Program membership on a personal account; prototype bundle ID `…milelog.prototype` | 18 Nov | TestFlight. External testers need Beta App Review (1–2 days); internal testers must be App Store Connect users |
 | 8 testers' Apple IDs and signed consent notices | 25 Nov | Phase 1b |
 | D-U-N-S number, then the company Apple account | before Phase 4 | the real app ships under the company |
@@ -101,7 +104,7 @@ Every phase ends with passing tests and a council review. The next phase doesn't
 | Go/no-go | ~24 Dec – 6 Jan | The plan's thresholds |
 | (Fix cycle, if needed) | +2 weeks fix, +remeasure | It takes priority over all other work |
 | 3 Reporting and commercial | 11–22 Jan | Every export reconciles to the claim total to the penny. Sandbox purchase, restore and expiry all work. |
-| 4 Beta and release | 25 Jan – 12 Feb; submit by 5 Feb | No open data-loss bugs. Every crash triaged. Battery taken from the test-run cohort (D5 protocol), not the beta. Privacy label and policy done. |
+| 4 Beta and release | 25 Jan – 12 Feb; submit by 5 Feb | At least 15 TestFlight users for at least 10 days. No open data-loss bugs. Every crash triaged. Battery taken from the test-run cohort (D5 protocol), not the beta. Privacy label and policy done. |
 | **Launch** | **mid-February to mid-March 2027**; around April if the fix cycle runs | App Store approval, with a 1–2 week buffer for App Review |
 
 January's Self Assessment peak is missed. The April 2027 MTD threshold change, the plan's main window, is not, provided the launch happens before about mid-March.

@@ -12,6 +12,8 @@ The spec names the first tab "Dashboard". This proposal calls it **Today**, beca
 1. **Welcome:** "Business mileage without the paperwork." Three bullets: automatic, private (no account), ready for your accountant.
 2. **Your vehicle:** car/van or motorcycle; nickname; registration optional; "Do you claim actual costs or capital allowances on this vehicle?" Yes shows a warning that flat rates may not apply.
 3. **Your year:** "When does your accounting year end?" Defaults to 5 April, with 31 March and Other as options.
+3a. **Home (optional, free):** "Where's home?" This lets the app spot commuting. Places are free for everyone; only *rules* are paid.
+3b. **Tracking phone** (only when another phone already tracks): "Track trips on this iPhone?" (§2.2).
 4. **Location, explained before the system prompt:** what is tracked (only drives), when, where it stays (your phone and your iCloud), and why Always is needed ("While Using may miss trips"). Then the While Using prompt, followed by the upgrade to Always prompt. iOS decides when the Always prompt actually appears **(verify the iOS 18 timing)**.
 5. **Motion & Fitness prompt**, explained first: it tells driving from walking, which saves battery.
 6. **Notifications prompt**, explained first: it's used to ask you to review a trip, never for marketing.
@@ -44,7 +46,7 @@ Vehicles, Places & rules, Accounting year, Tracking (status, assisted mode, diag
 
 ### Widget and Live Activity (Should: in v1 if time allows)
 - **Widget:** "1,234 business miles · 2 to review". It shows £ only for paid users. Tapping it opens the review screen.
-- **Live Activity during a trip:** elapsed time and miles so far, with an End trip button. iOS generally lets an app start a Live Activity only while it is on screen, and starting one remotely needs a push server, which v1 doesn't have. So a Live Activity can appear only for trips started with the app open or through assisted mode, not for trips detected in the background **(verify in the Phase 1a device check)**.
+- **Live Activity during a trip:** elapsed time and miles so far, with an End trip button. iOS generally lets an app start a Live Activity only while it is on screen, and starting one remotely needs a push server, which v1 doesn't have. So a Live Activity can appear only for trips started with the app open or through assisted mode, not for trips detected in the background. Whether one can start from an App Intent run by a Shortcuts automation is also **(verify)**. Both cases are on the Phase 1a device check.
 
 ## 4.3 Design system (phase 1 deliverable; outline here)
 

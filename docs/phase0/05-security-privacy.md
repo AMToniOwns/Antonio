@@ -29,7 +29,7 @@
 |---|---|
 | Implying HMRC approval or MTD compliance | Neither "HMRC" nor "MTD" appears in the title or subtitle (council). Copy says "uses HMRC's published mileage rates". An in-app and PDF footer says it's a mileage record, not tax advice. |
 | Wrong tax figures | The rate engine is tested and council-reviewed. The six open accountant questions must be answered before launch. Exports name the rules version, the threshold scope and the apportionment method. |
-| App Review questioning Always location (likely on a first submission) | Allow a week of review buffer (§6.4). Background location must be core functionality, which it is. The onboarding explanation, the background indicator, and no location use outside trips all support the case. |
+| App Review questioning Always location (likely on a first submission) | Allow a 1–2 week review buffer (§6.4). Background location must be core functionality, which it is. The onboarding explanation, the background indicator, and no location use outside trips all support the case. |
 | A future backend (when it comes) | DPIA before launch; RLS on every table; no route points on the server by default; Supabase project in an EU or UK region; accountant access to snapshots, not raw journeys. |
 
 ## 5.4 Threat model highlights
