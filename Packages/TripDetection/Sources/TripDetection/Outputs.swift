@@ -17,6 +17,20 @@ public struct DistanceGap: Hashable, Codable, Sendable {
     }
 }
 
+/// Why a trip ended, for the debug timeline and for tuning the stop rules in the test run.
+public enum EndReason: String, Codable, Sendable {
+    /// Stopped for `stopTimeout`.
+    case stopTimer
+    /// An arrival visit at the car's position.
+    case arrival
+    /// No moving fixes for `stopTimeout` (parked with a distance filter), or a long silence.
+    case silence
+    /// The app relaunched long after the last fix.
+    case staleOnRelaunch
+    case assistedStop
+    case permissionDenied
+}
+
 /// A finished drive, ready to be stored as an unconfirmed journey.
 public struct TripSegment: Hashable, Codable, Sendable {
     public var startedAt: Date
@@ -26,7 +40,8 @@ public struct TripSegment: Hashable, Codable, Sendable {
     /// Where the trip is taken to have begun: a recent nearby last stop, else the first fix.
     public var startCoordinate: Coordinate
     /// True when the real start is unknown: no usable last stop, so the drive probably began
-    /// before the first fix (SLC wakes several hundred metres in).
+    /// before the first fix (SLC wakes several hundred metres in). Always false for assisted
+    /// trips, which start at the car.
     public var startIsUncertain: Bool
     public var endCoordinate: Coordinate
     /// The first accepted live fix. The stretch from `startCoordinate` to here was driven
@@ -41,13 +56,14 @@ public struct TripSegment: Hashable, Codable, Sendable {
     public var points: [LocationFix]
     public var startedBy: WakeReason
     public var detectorVersion: String
+    public var endReason: EndReason
     /// The thresholds the trip was detected with, for comparing tunings in the test run.
     public var config: DetectorConfig
 
     public init(startedAt: Date, endedAt: Date, startDateLocal: String, startCoordinate: Coordinate,
                 startIsUncertain: Bool, endCoordinate: Coordinate, firstFixCoordinate: Coordinate,
                 measuredMetres: Double, gaps: [DistanceGap], stops: [DateInterval], points: [LocationFix],
-                startedBy: WakeReason, detectorVersion: String, config: DetectorConfig) {
+                startedBy: WakeReason, detectorVersion: String, endReason: EndReason, config: DetectorConfig) {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.startDateLocal = startDateLocal
@@ -61,8 +77,13 @@ public struct TripSegment: Hashable, Codable, Sendable {
         self.points = points
         self.startedBy = startedBy
         self.detectorVersion = detectorVersion
+        self.endReason = endReason
         self.config = config
     }
+
+    /// Stable for the same drive, so the adapter can ignore a trip re-emitted after a crash
+    /// between `emitTrip` and `persist`.
+    public var id: String { "trip-\(Int((startedAt.timeIntervalSince1970 * 1000).rounded()))" }
 
     /// True when some of the distance has to be estimated rather than measured.
     public var needsEstimate: Bool {
@@ -80,9 +101,11 @@ public enum Diagnostic: Hashable, Codable, Sendable {
     case fixRejected(FixRejection)
     case candidateAbandoned(evidence: Bool)
     case candidateExpired
+    case candidatePromoted
     case tripTooShort(metres: Double)
     case tripSplitAfterSilence(seconds: Double)
     case staleTripClosedOnRelaunch(seconds: Double)
+    case stoppingFromFix
     case stoppingFromMotion
     case resumedFromStop(seconds: Double)
     case visitIgnored

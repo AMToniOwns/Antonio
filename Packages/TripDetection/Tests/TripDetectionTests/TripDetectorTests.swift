@@ -215,6 +215,7 @@ import Testing
         s.timer(.silenceWatchdog, at: last + 240)
         let trip = try #require(s.trips.first)
         #expect(trip.endedAt == last)
+        #expect(trip.endReason == .silence)
         #expect(s.phase == .idle)
         #expect(s.effects.contains(.stopLive))
     }
@@ -241,6 +242,7 @@ import Testing
         var s = Scenario()
         s.startDriving()
         let last = try #require(s.lastPointTime)
+        s.park(seconds: 20) // out of the car; the distance filter sends nothing
         s.motion([.walking])
         #expect(s.phase == .stopping)
         #expect(s.effects.contains(.scheduleTimer(.stopTimeout, at: last + 240)))
@@ -275,18 +277,68 @@ import Testing
         #expect(s.trips.count == 1)
     }
 
-    @Test func crawlingResumesAStoppedTrip() {
+    @Test func crawlingInAQueueIsOneTrip() {
+        var s = Scenario()
+        s.startDriving()
+        s.motion([.automotive, .stationary])
+        s.waitWithFixes(seconds: 30)
+        #expect(s.phase == .driving)
+        s.move(seconds: 30, speed: 3)
+        s.waitWithFixes(seconds: 30)
+        s.move(seconds: 60, speed: 13)
+        #expect(s.phase == .driving)
+        #expect(s.trips.isEmpty)
+    }
+
+    @Test func crawlResumesAStopOnlyWithAutomotiveMotion() {
         var s = Scenario()
         s.startDriving()
         s.waitWithFixes(seconds: 5)
         #expect(s.phase == .stopping)
-        s.move(seconds: 30, speed: 3) // queuing out of a car park
+        s.move(seconds: 30, speed: 3) // jogging pace, no motion data: not a drive
+        #expect(s.phase == .stopping)
+        s.motion([.automotive, .stationary]) // in the car, queuing
+        s.move(seconds: 10, speed: 3)
+        #expect(s.phase == .driving)
+    }
+
+    @Test func plainAutomotiveDoesNotHoldSlowFixes() throws {
+        var s = Scenario()
+        s.startDriving()
+        s.motion([.automotive]) // the last change Core Motion reported, minutes ago
+        s.waitWithFixes(seconds: 250)
+        #expect(s.trips.count == 1)
+    }
+
+    @Test func parkedPhoneDriftEndsTheTripAndAddsNoDistance() throws {
+        var s = Scenario()
+        s.startDriving()
+        let parked = s.position
+        s.drift(seconds: 600) // indoors: 30 m hops, 40 m accuracy, no speed
+        let trip = try #require(s.trips.first)
+        #expect(trip.endCoordinate == parked)
+        #expect(abs(trip.measuredMetres - 119 * 13) < 5)
+    }
+
+    @Test func driftDoesNotResumeAStoppedTrip() {
+        var s = Scenario()
+        s.startDriving()
+        s.waitWithFixes(seconds: 5)
+        s.drift(seconds: 120, every: 10, radius: 30)
+        #expect(s.phase == .stopping)
+    }
+
+    @Test func walkingMotionRightAfterAFastFixIsIgnored() {
+        var s = Scenario()
+        s.startDriving()
+        s.motion([.walking]) // GPS said 13 m/s a second ago: a bumpy road, not a walk
         #expect(s.phase == .driving)
     }
 
     @Test func walkingSpeedDoesNotResume() {
         var s = Scenario()
         s.startDriving()
+        s.park(seconds: 20)
         s.motion([.walking])
         s.move(seconds: 60, speed: 2.5) // a brisk walk
         #expect(s.phase == .stopping)
@@ -295,28 +347,33 @@ import Testing
     @Test func shortDropOffKeepsOneTripAndRecordsTheStop() throws {
         var s = Scenario()
         s.startDriving()
+        s.park(seconds: 20)
         s.motion([.walking])
-        s.waitWithFixes(seconds: 180) // under 4 minutes
+        s.waitWithFixes(seconds: 160) // under 4 minutes in all
         #expect(s.phase == .stopping)
         s.motion([.automotive])
         s.move(seconds: 120, speed: 13)
         #expect(s.phase == .driving)
         #expect(s.effects.contains(.cancelTimer(.stopTimeout)))
+        s.park(seconds: 20)
         s.motion([.walking])
         s.waitWithFixes(seconds: 250)
         let trip = try #require(s.trips.first)
         #expect(s.trips.count == 1)
         #expect(trip.stops.count == 1)
+        #expect(trip.endReason == .stopTimer)
     }
 
     @Test func walkingAwayFromTheCarIsTrimmed() throws {
         var s = Scenario()
         s.startDriving()
         let car = s.position
+        let parkedAt = try #require(s.lastPointTime)
         let driven = 119 * 13.0
+        s.park(seconds: 20)
         s.motion([.walking])
         s.move(seconds: 200, speed: 1.4) // 280 m on foot
-        s.timer(.stopTimeout, at: s.now + 40)
+        s.timer(.stopTimeout, at: parkedAt + 240)
         let trip = try #require(s.trips.first)
         #expect(trip.endCoordinate == car)
         #expect(abs(trip.measuredMetres - driven) < 5)
@@ -353,6 +410,27 @@ import Testing
         #expect(s.trips.count == 1)
         #expect(trip.gaps.isEmpty)
         #expect(s.phase == .idle)
+    }
+
+    @Test func automotiveMotionAfterAMissedStopTimerStartsANewTrip() {
+        var s = Scenario()
+        s.startDriving()
+        s.waitWithFixes(seconds: 5)
+        s.now += 3600 // suspended; the stop timer never fired
+        s.motion([.automotive])
+        #expect(s.trips.count == 1)
+        #expect(s.trips.first?.stops.isEmpty == true)
+        #expect(s.phase == .candidate)
+    }
+
+    @Test func longJamBehindTheDistanceFilterIsNotSplit() {
+        var s = Scenario()
+        s.startDriving()
+        s.motion([.automotive, .stationary])
+        s.park(seconds: 900) // 15 minutes, no fixes
+        s.move(seconds: 60, speed: 13)
+        #expect(s.trips.isEmpty)
+        #expect(s.phase == .driving)
     }
 
     @Test func driveOffAfterAMissedStopTimerStartsANewTrip() {
@@ -453,43 +531,80 @@ import Testing
         #expect(out.contains(.scheduleTimer(.candidateTimeout, at: Scenario.t0 + 120)))
     }
 
-    @Test func persistIsNotEmittedForEveryFix() {
+    @Test func persistIsThrottledToOnceEveryFewSeconds() {
         var s = Scenario()
         s.startDriving(seconds: 600)
         let persists = s.effects.filter { effect in
             if case .persist = effect { return true }
             return false
         }.count
-        #expect(persists > 0)
-        #expect(persists < 40)
+        #expect(persists > 100) // at least every 5 s over 10 minutes...
+        #expect(persists <= 125) // ...but not every fix
     }
 
-    @Test func recordedEventsReplayToTheSameTrips() throws {
+    @Test func recordedSessionReplaysToTheSameTrips() throws {
+        let initial = Scenario().detector.state
         var s = Scenario()
         s.startDriving(seconds: 300)
-        s.motion([.walking])
+        s.park(seconds: 20)
+        s.motion([.walking, .stationary])
         s.waitWithFixes(seconds: 250)
-        let log = try EventLog.encode(s.events)
-        var initial = DetectorState()
-        initial.lastStop = .init(coordinate: Scenario.home, at: Scenario.t0 - 3600)
-        let replayed = TripDetector.replay(try EventLog.decode(log), from: initial)
-        let replayedTrips = replayed.effects.compactMap { effect -> TripSegment? in
+        let log = try EventLog.encode(session: initial, events: s.events)
+        let session = try EventLog.decodeSession(log)
+        let replayed = TripDetector.replay(session.events, from: try #require(session.state))
+        let replayedTrips = replayed.steps.flatMap(\.effects).compactMap { effect -> TripSegment? in
             if case let .emitTrip(trip) = effect { return trip }
             return nil
         }
         #expect(replayedTrips == s.trips)
         #expect(replayed.state == s.detector.state)
+        #expect(replayed.steps.last?.phase == .idle)
+        #expect(try EventLog.encode(session: initial, events: s.events) == log) // byte-identical
+    }
+
+    @Test func tripIDIsStableForTheSameDrive() throws {
+        var a = Scenario(), b = Scenario()
+        a.startDriving(); a.waitWithFixes(seconds: 250)
+        b.startDriving(); b.waitWithFixes(seconds: 250)
+        #expect(try #require(a.trips.first).id == (try #require(b.trips.first)).id)
+    }
+
+    @Test func staleCandidateIsReplacedByTheNextWake() throws {
+        var s = Scenario()
+        s.wake() // the candidate timer is never delivered
+        s.now += 3600
+        s.wake()
+        guard case let .candidate(c) = s.detector.state.phase else { Issue.record("not a candidate"); return }
+        #expect(c.since == s.now)
+        #expect(s.logs.contains(.candidateExpired))
     }
 }
 
 @Suite struct AssistedAndPermissionTests {
-    @Test func assistedCandidateWaitsForTheCarToMove() {
+    @Test func assistedCandidateWaitsForTheCarToMoveAndStartsWhenItLeaves() throws {
         var s = Scenario()
         s.send(.assistedStart(at: s.now))
-        s.timer(.candidateTimeout, at: Scenario.t0 + 300) // loading the van
+        s.timer(.candidateTimeout, at: Scenario.t0 + 300)
+        s.waitWithFixes(seconds: 300) // loading the van, GPS on
         #expect(s.phase == .candidate)
-        s.move(seconds: 80, speed: 4)
+        let leaving = s.now
+        s.move(seconds: 200, speed: 4)
         #expect(s.phase == .driving)
+        s.send(.assistedStop(at: s.now))
+        let trip = try #require(s.trips.first)
+        #expect(trip.startedAt >= leaving)
+        #expect(trip.startedAt <= leaving + 15)
+        #expect(trip.endReason == .assistedStop)
+    }
+
+    @Test func assistedCandidateDoesNotWaitOvernight() {
+        var s = Scenario()
+        s.send(.assistedStart(at: s.now)) // the "stop" automation never runs
+        s.now += 8 * 3600
+        s.wake()
+        #expect(s.logs.contains(.candidateExpired))
+        guard case let .candidate(c) = s.detector.state.phase else { Issue.record("not a candidate"); return }
+        #expect(!c.assisted)
     }
 
     @Test func shortAssistedTripIsDropped() {

@@ -58,10 +58,44 @@ import Testing
         #expect(trip.end == t0 + 1200)
     }
 
+    @Test func aDriveStillInProgressIsLeftToTheLiveLayer() {
+        let history = [sample(0, [.walking]), sample(50, [.automotive])]
+        #expect(RecoveryPlanner.recover(history: history, knownTrips: [], visits: [], now: t0 + 3600).isEmpty)
+    }
+
+    @Test func theLeadInBeforeALiveTripIsNotRecovered() {
+        // SLC woke the app 3 minutes into the drive; the trip already estimates that stretch.
+        let history = [sample(12, [.automotive]), sample(30, [.walking])]
+        let known = [DateInterval(start: t0 + 15 * 60, end: t0 + 30 * 60)]
+        #expect(RecoveryPlanner.recover(history: history, knownTrips: known, visits: [], now: t0 + 3600).isEmpty)
+    }
+
+    @Test func pieceNextToARecordedTripGetsNoEndpointAcrossIt() throws {
+        let a = Coordinate(latitude: 53.8, longitude: -1.55), b = Coordinate(latitude: 53.9, longitude: -1.5)
+        let visits = [Visit(coordinate: a, arrival: t0 - 3600, departure: t0 + 9 * 60),
+                      Visit(coordinate: b, arrival: t0 + 31 * 60, departure: nil)]
+        let history = [sample(10, [.automotive]), sample(30, [.walking])]
+        let known = [DateInterval(start: t0 + 20 * 60, end: t0 + 30 * 60)] // allowance covers 15–30
+        let piece = try #require(RecoveryPlanner.recover(history: history, knownTrips: known, visits: visits, now: t0 + 3600).first)
+        #expect(piece.start == t0 + 600)
+        #expect(piece.end == t0 + 900)
+        #expect(piece.from == a)
+        #expect(piece.to == nil) // the user, or the trip's own start, supplies it
+    }
+
     @Test func coverageUsesTheUnionNotTheSum() {
         let run = DateInterval(start: t0, duration: 600)
         let overlapping = [DateInterval(start: t0, duration: 400), DateInterval(start: t0 + 100, duration: 300)]
         #expect(RecoveryPlanner.coveredDuration(of: run, by: overlapping) == 400)
+    }
+}
+
+@Suite struct EncodingTests {
+    @Test func motionKindsAreWrittenSorted() throws {
+        let sample = MotionSample(startDate: Scenario.t0, kinds: [.walking, .automotive, .stationary], confidence: .high)
+        let json = String(decoding: try JSONEncoder().encode(sample), as: UTF8.self)
+        #expect(json.contains(#""kinds":["automotive","stationary","walking"]"#))
+        #expect(try JSONDecoder().decode(MotionSample.self, from: Data(json.utf8)) == sample)
     }
 }
 

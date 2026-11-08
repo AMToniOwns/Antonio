@@ -5,13 +5,17 @@ public struct DetectorConfig: Hashable, Codable, Sendable {
     /// A candidate with no driving evidence is dropped after this long.
     public var candidateTimeout: TimeInterval = 120
     /// A candidate is dropped after this long even with evidence (stuck in a car park with the
-    /// engine running), so GPS can't stay on indefinitely. Assisted candidates are exempt.
+    /// engine running), so GPS can't stay on indefinitely.
     public var maxCandidateDuration: TimeInterval = 600
+    /// An assisted candidate (CarPlay/Bluetooth automation) waits longer for the car to move,
+    /// but not overnight if the "stop" automation never runs.
+    public var maxAssistedWait: TimeInterval = 3600
     /// Stopped this long ends the trip (3–5 min in Phase 0).
     public var stopTimeout: TimeInterval = 240
-    /// Fixes faster than this count as driving evidence and resume a stopped trip.
+    /// Fixes faster than this count as driving evidence and resume a stopped trip on their own.
     public var drivingSpeed: Double = 6           // m/s, ~13 mph
-    /// Fixes slower than this count as stopped.
+    /// Fixes slower than this count as stopped. Between this and `drivingSpeed` (crawling),
+    /// a stopped trip resumes only if Core Motion says automotive.
     public var stoppedSpeed: Double = 2           // m/s, ~4.5 mph
     /// Consecutive fast fixes needed as driving evidence on their own.
     public var fastFixesNeeded = 3
@@ -26,20 +30,29 @@ public struct DetectorConfig: Hashable, Codable, Sendable {
     public var maxConsecutiveJumpRejections = 3
     /// Gaps up to this long are joined in a straight line; longer ones are left for estimation.
     public var straightLineGapLimit: TimeInterval = 120
-    /// No fixes for this long while Driving means the phone was parked (or killed): the next
-    /// fix starts a new trip instead of joining this one.
+    /// No moving fixes for this long while Driving means the phone was parked (or the app
+    /// killed): the trip ends at its last moving fix, and later movement is a new trip.
     public var maxResumeGap: TimeInterval = 600
-    /// "Automotive + stationary" keeps a trip alive in traffic, but not for longer than this.
+    /// Core Motion saying "automotive" holds a trip open through slow fixes or silence, but
+    /// not for longer than this (the sample may simply be stale).
     public var maxTrafficHold: TimeInterval = 1200
-    /// Derive speed from consecutive fixes when the OS reports none, if they're this close.
+    /// When iOS reports no speed, derive it from a fix at least this far back...
+    public var derivedSpeedBaseline: TimeInterval = 5
+    /// ...and no further back than this.
     public var derivedSpeedWindow: TimeInterval = 30
     /// A last stop older or further from the first fix than this isn't used as the start.
     public var maxLastStopAge: TimeInterval = 12 * 3600
     public var maxLastStopDistance: Double = 3000
     /// An arrival visit ends a trip only if it's this close to the latest position.
     public var visitMatchRadius: Double = 250
-    /// Motion samples older than this (by delivery) don't override fix speeds.
-    public var motionFreshness: TimeInterval = 300
+    /// Motion stops a trip without a slow fix only if the last fix is this old (or was slow).
+    public var motionStopFixAge: TimeInterval = 15
+    /// Stops inside a trip shorter than this are noise (a false "walking" reading), not stops.
+    public var minimumRecordedStop: TimeInterval = 30
+    /// An assisted trip starts at the last fix within this distance of the start point.
+    public var assistedDepartureRadius: Double = 50
+    /// Persist at least this often while anything changes.
+    public var persistInterval: TimeInterval = 5
     public var minimumTripMetres: Double = 482.8  // 0.3 miles
     public var motionHistoryWindow: TimeInterval = 300
     public var stopRegionRadius: Double = 150
@@ -47,13 +60,28 @@ public struct DetectorConfig: Hashable, Codable, Sendable {
     public init() {}
 }
 
-/// The detector's persisted state. Codable so it survives a background relaunch.
+/// The detector's persisted state. Codable so it survives a background relaunch. If a stored
+/// state fails to decode after an app update, the adapter starts from `DetectorState()` and
+/// recovery fills any gap (adapter contract).
 public struct DetectorState: Hashable, Codable, Sendable {
+    public static let currentSchemaVersion = 1
+
     public enum Phase: Hashable, Codable, Sendable {
         case idle
         case candidate(Candidate)
         case driving(TripInProgress)
         case stopping(TripInProgress, since: Date)
+
+        public enum Kind: String, Codable, Sendable { case idle, candidate, driving, stopping }
+
+        public var kind: Kind {
+            switch self {
+            case .idle: return .idle
+            case .candidate: return .candidate
+            case .driving: return .driving
+            case .stopping: return .stopping
+            }
+        }
     }
 
     public struct Stop: Hashable, Codable, Sendable {
@@ -69,7 +97,7 @@ public struct DetectorState: Hashable, Codable, Sendable {
     public struct Candidate: Hashable, Codable, Sendable {
         public var since: Date
         public var reason: WakeReason
-        /// Started by the user's Shortcuts automation: no timeout, ends on `assistedStop`.
+        /// Started by the user's Shortcuts automation: waits up to `maxAssistedWait`.
         public var assisted: Bool
         public var hasDrivingEvidence: Bool
         /// When evidence was last *received* (not when the motion it describes began).
@@ -86,6 +114,11 @@ public struct DetectorState: Hashable, Codable, Sendable {
         public var startIsUncertain: Bool
         public var startedBy: WakeReason
         public var points: [LocationFix]
+        /// The last fix that showed the car moving (at least `stoppedSpeed`). Silence and drift
+        /// are measured from here, not from the last fix of any kind.
+        public var lastMovingAt: Date
+        /// Speed at the last fix, if known.
+        public var lastSpeed: Double?
         /// Start of the current run of slow fixes, for the traffic-hold limit.
         public var slowSince: Date?
         /// Stops inside the trip that ended by driving off again.
@@ -94,21 +127,30 @@ public struct DetectorState: Hashable, Codable, Sendable {
         var lastPointTime: Date { points.last?.timestamp ?? startedAt }
     }
 
+    public var schemaVersion = DetectorState.currentSchemaVersion
     public var phase: Phase = .idle
     public var lastStop: Stop?
     /// The latest motion sample and when it was delivered.
     public var lastMotion: MotionSample?
     public var lastMotionReceivedAt: Date?
+    public var lastPersistedAt: Date?
     var jumpRejections = 0
 
     public init() {}
 }
 
+/// One step of a replay: the event, what the detector did, and the phase it ended in.
+public struct ReplayStep: Hashable, Sendable {
+    public var event: DetectionEvent
+    public var effects: [DetectionEffect]
+    public var phase: DetectorState.Phase.Kind
+}
+
 /// The trip state machine (Phase 0 §3.3). Pure: events in, effects out, no clocks and no
 /// Core Location. Feed it every event in delivery order and carry out the effects it returns
-/// (see docs/phase1/adapter-contract.md).
+/// (docs/phase1/adapter-contract.md).
 public struct TripDetector: Sendable {
-    public static let version = "td-0.2.0"
+    public static let version = "td-0.3.0"
 
     public private(set) var state: DetectorState
     public let config: DetectorConfig
@@ -118,21 +160,28 @@ public struct TripDetector: Sendable {
         self.config = config
     }
 
-    /// Feeds `events` in order and returns every effect, for replaying recorded traces.
+    /// Feeds `events` in order and returns every step, for replaying recorded traces and for
+    /// the debug timeline.
     public static func replay(_ events: [DetectionEvent], from state: DetectorState = DetectorState(),
-                              config: DetectorConfig = DetectorConfig()) -> (effects: [DetectionEffect], state: DetectorState) {
+                              config: DetectorConfig = DetectorConfig()) -> (steps: [ReplayStep], state: DetectorState) {
         var detector = TripDetector(state: state, config: config)
-        let effects = events.flatMap { detector.handle($0) }
-        return (effects, detector.state)
+        var steps: [ReplayStep] = []
+        for event in events {
+            let effects = detector.handle(event)
+            steps.append(ReplayStep(event: event, effects: effects, phase: detector.state.phase.kind))
+        }
+        return (steps, detector.state)
     }
 
     public mutating func handle(_ event: DetectionEvent) -> [DetectionEffect] {
         var effects: [DetectionEffect] = []
         let before = state
+        let now = event.time
 
         switch event {
         case let .wake(reason, at):
             effects.append(.runRecovery)
+            settle(at: at, effects: &effects)
             if case .idle = state.phase {
                 startCandidate(reason: reason, at: at, assisted: reason == .assisted, effects: &effects)
             }
@@ -143,16 +192,24 @@ public struct TripDetector: Sendable {
         case let .fix(fix, receivedAt):
             if let reason = rejection(for: fix, receivedAt: receivedAt) {
                 effects.append(.log(.fixRejected(reason)))
-            } else {
-                handleFix(fix, effects: &effects)
+                break
             }
+            if settle(at: fix.timestamp, effects: &effects), let speed = fix.reportedSpeed, speed > config.drivingSpeed {
+                // The trip that just ended was stale; this fix may be the start of the next one.
+                startCandidate(reason: .significantLocationChange, at: fix.timestamp, assisted: false, effects: &effects)
+            }
+            handleFix(fix, effects: &effects)
 
         case let .motion(sample, receivedAt):
             state.lastMotion = sample
             state.lastMotionReceivedAt = receivedAt
+            if settle(at: receivedAt, effects: &effects), sample.isConfidentDriving, !sample.kinds.contains(.stationary) {
+                startCandidate(reason: .significantLocationChange, at: receivedAt, assisted: false, effects: &effects)
+            }
             handleMotion(sample, receivedAt: receivedAt, effects: &effects)
 
         case let .motionHistory(samples, receivedAt):
+            settle(at: receivedAt, effects: &effects)
             guard let latest = samples.last else { break }
             state.lastMotion = latest
             state.lastMotionReceivedAt = receivedAt
@@ -166,6 +223,7 @@ public struct TripDetector: Sendable {
             }
 
         case let .visit(visit, receivedAt):
+            settle(at: receivedAt, effects: &effects)
             handleVisit(visit, receivedAt: receivedAt, effects: &effects)
 
         case let .timerFired(id, at):
@@ -177,11 +235,12 @@ public struct TripDetector: Sendable {
             case .whenInUse: effects.append(.notify(.permissionDowngraded))
             case .denied:
                 effects.append(.notify(.locationDenied))
-                closeEverything(at: at, effects: &effects)
+                closeEverything(at: at, reason: .permissionDenied, effects: &effects)
             }
             if !precise { effects.append(.notify(.preciseLocationOff)) }
 
         case let .assistedStart(at):
+            settle(at: at, effects: &effects)
             switch state.phase {
             case .idle:
                 startCandidate(reason: .assisted, at: at, assisted: true, effects: &effects)
@@ -197,52 +256,84 @@ public struct TripDetector: Sendable {
             }
 
         case let .assistedStop(at):
-            closeEverything(at: at, effects: &effects)
+            closeEverything(at: at, reason: .assistedStop, effects: &effects)
         }
 
-        if shouldPersist(before: before) { effects.append(.persist(state)) }
+        if shouldPersist(before: before, at: now) {
+            state.lastPersistedAt = now
+            effects.append(.persist(state))
+        }
         return effects
+    }
+
+    // MARK: - Settling stale state
+
+    /// Closes whatever has gone stale by `at`, whichever event revealed it: timers can be missed
+    /// while suspended, so every event checks the clock. Returns true if a trip was closed.
+    @discardableResult
+    private mutating func settle(at: Date, effects: inout [DetectionEffect]) -> Bool {
+        switch state.phase {
+        case .idle:
+            return false
+
+        case let .candidate(c):
+            let age = at.timeIntervalSince(c.since)
+            if age >= (c.assisted ? config.maxAssistedWait : config.maxCandidateDuration) {
+                effects.append(.log(.candidateExpired))
+                abandonCandidate(effects: &effects)
+            }
+            return false
+
+        case let .stopping(trip, since):
+            guard at.timeIntervalSince(since) >= config.stopTimeout else { return false }
+            finish(trip, endedAt: since, trimAfter: trip.lastMovingAt, reason: .stopTimer, effects: &effects)
+            return true
+
+        case let .driving(trip):
+            let silence = at.timeIntervalSince(trip.lastMovingAt)
+            guard silence > config.maxResumeGap, !heldByMotion(trip, at: at) else { return false }
+            effects.append(.log(.tripSplitAfterSilence(seconds: silence)))
+            finish(trip, endedAt: trip.lastMovingAt, trimAfter: trip.lastMovingAt, reason: .silence, effects: &effects)
+            return true
+        }
     }
 
     // MARK: - Relaunch
 
     private mutating func handleRelaunch(at: Date, effects: inout [DetectionEffect]) {
+        let staleSince: Date?
+        switch state.phase {
+        case let .driving(trip): staleSince = trip.lastMovingAt
+        case let .stopping(_, since): staleSince = since
+        default: staleSince = nil
+        }
+        var settled: [DetectionEffect] = []
+        if settle(at: at, effects: &settled), let staleSince {
+            effects.append(.log(.staleTripClosedOnRelaunch(seconds: at.timeIntervalSince(staleSince))))
+        }
+
         switch state.phase {
         case .idle:
             break // Opening the app isn't a drive; `.wake` follows if a location event caused it.
 
         case let .candidate(c):
-            if c.assisted || at.timeIntervalSince(c.since) < config.maxCandidateDuration {
-                effects.append(.startLive)
-                effects.append(.queryMotionHistory(from: at - config.motionHistoryWindow))
-                if !c.assisted {
-                    let due = max(c.since, c.lastEvidenceAt) + config.candidateTimeout
-                    effects.append(.scheduleTimer(.candidateTimeout, at: due))
-                }
-            } else {
-                abandonCandidate(effects: &effects)
+            effects.append(.startLive)
+            effects.append(.queryMotionHistory(from: at - config.motionHistoryWindow))
+            if !c.assisted {
+                let due = max(c.since, c.lastEvidenceAt) + config.candidateTimeout
+                effects.append(.scheduleTimer(.candidateTimeout, at: due))
             }
 
         case let .driving(trip):
-            let silence = at.timeIntervalSince(trip.lastPointTime)
-            if silence > config.maxResumeGap {
-                effects.append(.log(.staleTripClosedOnRelaunch(seconds: silence)))
-                finish(trip, endedAt: trip.lastPointTime, trimAfter: nil, effects: &effects)
-            } else {
-                // Restore live tracking first: the session must be recreated straight after relaunch.
-                effects.append(.startLive)
-                effects.append(.scheduleTimer(.silenceWatchdog, at: trip.lastPointTime + config.stopTimeout))
-            }
+            // Restore live tracking first: the session must be recreated straight after relaunch.
+            effects.append(.startLive)
+            effects.append(.scheduleTimer(.silenceWatchdog, at: max(trip.lastMovingAt, at) + config.stopTimeout))
 
-        case let .stopping(trip, since):
-            if at.timeIntervalSince(since) >= config.stopTimeout {
-                effects.append(.log(.staleTripClosedOnRelaunch(seconds: at.timeIntervalSince(since))))
-                finish(trip, endedAt: since, trimAfter: since, effects: &effects)
-            } else {
-                effects.append(.startLive)
-                effects.append(.scheduleTimer(.stopTimeout, at: since + config.stopTimeout))
-            }
+        case let .stopping(_, since):
+            effects.append(.startLive)
+            effects.append(.scheduleTimer(.stopTimeout, at: since + config.stopTimeout))
         }
+        effects += settled
         effects.append(.runRecovery)
     }
 
@@ -294,7 +385,7 @@ public struct TripDetector: Sendable {
             break
 
         case var .candidate(c):
-            let speed = effectiveSpeed(of: fix, after: c.fixes.last)
+            let speed = effectiveSpeed(of: fix, history: c.fixes)
             c.fixes.append(fix)
             if let speed, speed > config.drivingSpeed {
                 c.fastFixes += 1
@@ -309,44 +400,35 @@ public struct TripDetector: Sendable {
             promoteCandidateIfReady(effects: &effects)
 
         case var .driving(trip):
-            let silence = fix.timestamp.timeIntervalSince(trip.lastPointTime)
-            if silence > config.maxResumeGap {
-                // Parked (or killed) and now moving again: that was the end of one trip, and
-                // this fix may be the start of another.
-                effects.append(.log(.tripSplitAfterSilence(seconds: silence)))
-                finish(trip, endedAt: trip.lastPointTime, trimAfter: nil, effects: &effects)
-                startCandidate(reason: .significantLocationChange, at: fix.timestamp, assisted: false, effects: &effects)
-                handleFix(fix, effects: &effects)
+            let speed = effectiveSpeed(of: fix, history: trip.points)
+            trip.points.append(fix)
+            trip.lastSpeed = speed
+            guard let speed else {
+                state.phase = .driving(trip) // unknown speed: neither moving nor stopped
                 return
             }
-            let speed = effectiveSpeed(of: fix, after: trip.points.last)
-            trip.points.append(fix)
-            if let speed, speed < config.stoppedSpeed {
-                if trip.slowSince == nil { trip.slowSince = fix.timestamp }
-                if inTrafficHold(trip, at: fix.timestamp) {
-                    state.phase = .driving(trip)
-                } else {
-                    state.phase = .stopping(trip, since: trip.slowSince ?? fix.timestamp)
-                    effects.append(.scheduleTimer(.stopTimeout, at: (trip.slowSince ?? fix.timestamp) + config.stopTimeout))
-                }
-            } else {
-                if let speed, speed >= config.stoppedSpeed { trip.slowSince = nil }
+            if speed >= config.stoppedSpeed {
+                trip.lastMovingAt = fix.timestamp
+                trip.slowSince = nil
                 state.phase = .driving(trip)
+                return
+            }
+            let slowSince = trip.slowSince ?? fix.timestamp
+            trip.slowSince = slowSince
+            if heldInTraffic(trip, at: fix.timestamp) {
+                state.phase = .driving(trip)
+            } else {
+                state.phase = .stopping(trip, since: slowSince)
+                effects.append(.log(.stoppingFromFix))
+                effects.append(.scheduleTimer(.stopTimeout, at: slowSince + config.stopTimeout))
             }
 
         case .stopping(var trip, let since):
-            // Check the clock first: if the stop timer never fired, this fix is the next drive.
-            if fix.timestamp.timeIntervalSince(since) >= config.stopTimeout {
-                finish(trip, endedAt: since, trimAfter: since, effects: &effects)
-                if let speed = effectiveSpeed(of: fix, after: nil), speed > config.drivingSpeed {
-                    startCandidate(reason: .significantLocationChange, at: fix.timestamp, assisted: false, effects: &effects)
-                    handleFix(fix, effects: &effects)
-                }
-                return
-            }
-            let speed = effectiveSpeed(of: fix, after: trip.points.last)
+            let speed = effectiveSpeed(of: fix, history: trip.points)
             trip.points.append(fix)
-            if let speed, resumes(at: speed, at: fix.timestamp) {
+            trip.lastSpeed = speed
+            if let speed, resumes(at: speed) {
+                trip.lastMovingAt = fix.timestamp
                 resume(&trip, stoppedSince: since, at: fix.timestamp, effects: &effects)
             } else {
                 state.phase = .stopping(trip, since: since)
@@ -354,13 +436,17 @@ public struct TripDetector: Sendable {
         }
     }
 
-    /// The fix's own speed if the OS reported one, else distance over time from the previous fix.
-    private func effectiveSpeed(of fix: LocationFix, after previous: LocationFix?) -> Double? {
-        if fix.hasValidSpeed { return fix.speed }
-        guard let previous else { return nil }
-        let dt = fix.timestamp.timeIntervalSince(previous.timestamp)
-        guard dt > 0, dt <= config.derivedSpeedWindow else { return nil }
-        return previous.coordinate.distance(to: fix.coordinate) / dt
+    /// The fix's own speed if iOS reported one. Otherwise distance over time from an earlier fix
+    /// at least `derivedSpeedBaseline` back, treating movement within the two fixes' accuracy as
+    /// none: a parked phone's location drifts tens of metres without the car moving.
+    private func effectiveSpeed(of fix: LocationFix, history: [LocationFix]) -> Double? {
+        if let speed = fix.reportedSpeed { return speed }
+        guard let base = history.last(where: { fix.timestamp.timeIntervalSince($0.timestamp) >= config.derivedSpeedBaseline }),
+              fix.timestamp.timeIntervalSince(base.timestamp) <= config.derivedSpeedWindow else { return nil }
+        let dt = fix.timestamp.timeIntervalSince(base.timestamp)
+        let distance = base.coordinate.distance(to: fix.coordinate)
+        guard distance > base.horizontalAccuracy + fix.horizontalAccuracy else { return 0 }
+        return distance / dt
     }
 
     // MARK: - Motion
@@ -375,10 +461,13 @@ public struct TripDetector: Sendable {
             promoteCandidateIfReady(effects: &effects)
 
         case let .driving(trip):
-            // Out of the car with no further fixes (distance filter): start the stop timer now.
-            guard !sample.kinds.contains(.automotive), sample.confidence >= .medium,
-                  sample.kinds.isDisjoint(with: [.unknown]) else { return }
-            let since = min(receivedAt, max(trip.lastPointTime, sample.startDate))
+            // Out of the car, and no slow fix to say so (the distance filter sends nothing).
+            // GPS wins if it says the car was still moving a moment ago.
+            guard !sample.kinds.contains(.automotive), !sample.kinds.contains(.unknown),
+                  sample.confidence >= .medium else { return }
+            let lastFixAge = receivedAt.timeIntervalSince(trip.lastPointTime)
+            guard (trip.lastSpeed ?? 0) < config.drivingSpeed || lastFixAge > config.motionStopFixAge else { return }
+            let since = min(receivedAt, trip.slowSince ?? trip.lastMovingAt)
             state.phase = .stopping(trip, since: since)
             effects.append(.log(.stoppingFromMotion))
             effects.append(.scheduleTimer(.stopTimeout, at: since + config.stopTimeout))
@@ -405,14 +494,20 @@ public struct TripDetector: Sendable {
                 return
             }
             if case let .stopping(_, since) = state.phase {
-                finish(trip, endedAt: since, trimAfter: since, effects: &effects)
+                finish(trip, endedAt: since, trimAfter: trip.lastMovingAt, reason: .arrival, effects: &effects)
             } else {
-                finish(trip, endedAt: max(trip.startedAt, min(arrival, last.timestamp)), trimAfter: nil, effects: &effects)
+                let ended = max(trip.startedAt, min(arrival, trip.lastMovingAt))
+                finish(trip, endedAt: ended, trimAfter: trip.lastMovingAt, reason: .arrival, effects: &effects)
             }
 
         case .idle, .candidate:
             let at = visit.departure ?? visit.arrival ?? receivedAt
-            if state.lastStop.map({ at >= $0.at }) ?? true {
+            if let stop = state.lastStop, at < stop.at {
+                // An older visit: ignore.
+            } else if let stop = state.lastStop, stop.coordinate.distance(to: visit.coordinate) <= config.visitMatchRadius {
+                // Same place as our GPS park point, which is more precise than a visit's centre.
+                state.lastStop = .init(coordinate: stop.coordinate, at: at)
+            } else {
                 state.lastStop = .init(coordinate: visit.coordinate, at: at)
             }
             if let departure = visit.departure, case var .candidate(c) = state.phase,
@@ -449,20 +544,20 @@ public struct TripDetector: Sendable {
 
         case let (.stopTimeout, .stopping(trip, since)):
             if at.timeIntervalSince(since) >= config.stopTimeout {
-                finish(trip, endedAt: since, trimAfter: since, effects: &effects)
+                finish(trip, endedAt: since, trimAfter: trip.lastMovingAt, reason: .stopTimer, effects: &effects)
             } else {
                 effects.append(.scheduleTimer(.stopTimeout, at: since + config.stopTimeout))
             }
 
         case let (.silenceWatchdog, .driving(trip)):
-            let silence = at.timeIntervalSince(trip.lastPointTime)
+            let silence = at.timeIntervalSince(trip.lastMovingAt)
             if silence < config.stopTimeout {
-                effects.append(.scheduleTimer(.silenceWatchdog, at: trip.lastPointTime + config.stopTimeout))
-            } else if inTrafficHold(trip, at: at) {
+                effects.append(.scheduleTimer(.silenceWatchdog, at: trip.lastMovingAt + config.stopTimeout))
+            } else if heldByMotion(trip, at: at) {
                 effects.append(.log(.trafficHold))
                 effects.append(.scheduleTimer(.silenceWatchdog, at: at + config.stopTimeout))
             } else {
-                finish(trip, endedAt: trip.lastPointTime, trimAfter: nil, effects: &effects)
+                finish(trip, endedAt: trip.lastMovingAt, trimAfter: trip.lastMovingAt, reason: .silence, effects: &effects)
             }
 
         default:
@@ -473,6 +568,7 @@ public struct TripDetector: Sendable {
     // MARK: - Transitions
 
     private mutating func startCandidate(reason: WakeReason, at: Date, assisted: Bool, effects: inout [DetectionEffect]) {
+        state.jumpRejections = 0
         state.phase = .candidate(.init(since: at, reason: reason, assisted: assisted, hasDrivingEvidence: assisted,
                                        lastEvidenceAt: at, fastFixes: 0, fixes: [], startHint: nil))
         effects.append(.startLive)
@@ -502,44 +598,61 @@ public struct TripDetector: Sendable {
         guard anchor.distance(to: latest.coordinate) >= config.minimumDisplacement else { return }
         if let ignoredStop { effects.append(.log(ignoredStop)) }
 
-        let trip = DetectorState.TripInProgress(startedAt: min(c.startHint ?? c.since, c.since),
-                                                startCoordinate: anchor, startIsUncertain: uncertain,
-                                                startedBy: c.reason, points: c.fixes, slowSince: nil, stops: [])
+        var startedAt = min(c.startHint ?? c.since, c.since)
+        if c.assisted, let departure = c.fixes.last(where: { $0.coordinate.distance(to: anchor) <= config.assistedDepartureRadius }) {
+            startedAt = max(startedAt, departure.timestamp) // waited on the drive while loading
+        }
+        if let stop = state.lastStop, stop.at <= c.since {
+            startedAt = max(startedAt, stop.at) // never before the previous trip ended
+        }
+
+        let trip = DetectorState.TripInProgress(startedAt: startedAt, startCoordinate: anchor, startIsUncertain: uncertain,
+                                                startedBy: c.reason, points: c.fixes, lastMovingAt: latest.timestamp,
+                                                lastSpeed: nil, slowSince: nil, stops: [])
         state.phase = .driving(trip)
+        effects.append(.log(.candidatePromoted))
         effects.append(.cancelTimer(.candidateTimeout))
         effects.append(.scheduleTimer(.silenceWatchdog, at: latest.timestamp + config.stopTimeout))
     }
 
     private mutating func resume(_ trip: inout DetectorState.TripInProgress, stoppedSince: Date, at: Date,
                                  effects: inout [DetectionEffect]) {
-        trip.stops.append(DateInterval(start: stoppedSince, end: max(stoppedSince, at)))
+        let stop = DateInterval(start: stoppedSince, end: max(stoppedSince, at))
+        if stop.duration >= config.minimumRecordedStop { trip.stops.append(stop) }
         trip.slowSince = nil
         state.phase = .driving(trip)
-        effects.append(.log(.resumedFromStop(seconds: at.timeIntervalSince(stoppedSince))))
+        effects.append(.log(.resumedFromStop(seconds: stop.duration)))
         effects.append(.cancelTimer(.stopTimeout))
-        effects.append(.scheduleTimer(.silenceWatchdog, at: trip.lastPointTime + config.stopTimeout))
+        effects.append(.scheduleTimer(.silenceWatchdog, at: max(trip.lastMovingAt, at) + config.stopTimeout))
     }
 
     private mutating func abandonCandidate(effects: inout [DetectionEffect]) {
         state.phase = .idle
+        state.jumpRejections = 0
         effects.append(.cancelTimer(.candidateTimeout))
         effects.append(.stopLive)
     }
 
     /// Ends whatever is in progress (assisted stop, permission denied).
-    private mutating func closeEverything(at: Date, effects: inout [DetectionEffect]) {
+    private mutating func closeEverything(at: Date, reason: EndReason, effects: inout [DetectionEffect]) {
         switch state.phase {
-        case let .driving(trip): finish(trip, endedAt: max(trip.startedAt, min(at, trip.lastPointTime)), trimAfter: nil, effects: &effects)
-        case let .stopping(trip, since): finish(trip, endedAt: since, trimAfter: since, effects: &effects)
-        case .candidate: abandonCandidate(effects: &effects)
-        case .idle: break
+        case let .driving(trip):
+            finish(trip, endedAt: max(trip.startedAt, min(at, trip.lastMovingAt)), trimAfter: trip.lastMovingAt,
+                   reason: reason, effects: &effects)
+        case let .stopping(trip, since):
+            finish(trip, endedAt: since, trimAfter: trip.lastMovingAt, reason: reason, effects: &effects)
+        case .candidate:
+            abandonCandidate(effects: &effects)
+        case .idle:
+            break
         }
     }
 
-    /// Emits the trip. With `trimAfter`, points after that moment (walking away from the car,
-    /// a late fix) are dropped so they don't add distance or move the end point.
+    /// Emits the trip ending at `endedAt`. Points after `trimAfter` — the last fix that showed
+    /// the car moving — are dropped: walking away from the car, a parked phone's drift and late
+    /// fixes would otherwise add distance and move the end point.
     private mutating func finish(_ trip: DetectorState.TripInProgress, endedAt: Date, trimAfter: Date?,
-                                 effects: inout [DetectionEffect]) {
+                                 reason: EndReason, effects: inout [DetectionEffect]) {
         var points = trip.points
         if let trimAfter {
             let kept = points.filter { $0.timestamp <= trimAfter }
@@ -548,6 +661,7 @@ public struct TripDetector: Sendable {
         let end = points.last?.coordinate ?? trip.startCoordinate
         let ended = max(trip.startedAt, endedAt)
         state.phase = .idle
+        state.jumpRejections = 0
         state.lastStop = .init(coordinate: end, at: ended)
         effects.append(.cancelTimer(.stopTimeout))
         effects.append(.cancelTimer(.silenceWatchdog))
@@ -562,7 +676,8 @@ public struct TripDetector: Sendable {
                                   endCoordinate: end, firstFixCoordinate: first.coordinate,
                                   measuredMetres: measured, gaps: gaps,
                                   stops: trip.stops.filter { $0.end <= ended }, points: points,
-                                  startedBy: trip.startedBy, detectorVersion: Self.version, config: config)
+                                  startedBy: trip.startedBy, detectorVersion: Self.version,
+                                  endReason: reason, config: config)
         // The 0.3-mile minimum is judged on the best estimate of the whole drive: what was
         // measured, plus straight lines for the lead-in and any gaps (a lower bound on the road
         // distance), so a trip isn't dropped just because part of it couldn't be measured.
@@ -592,23 +707,26 @@ public struct TripDetector: Sendable {
         return (metres, gaps)
     }
 
-    /// Automotive + stationary (lights, a jam) keeps the trip going, for up to `maxTrafficHold`.
-    private func inTrafficHold(_ trip: DetectorState.TripInProgress, at: Date) -> Bool {
-        guard let motion = state.lastMotion, motion.isConfidentDriving else { return false }
-        return at.timeIntervalSince(trip.slowSince ?? trip.lastPointTime) < config.maxTrafficHold
+    /// Slow fixes don't stop the trip while Core Motion says "automotive + stationary"
+    /// (lights, a jam), for up to `maxTrafficHold`.
+    private func heldInTraffic(_ trip: DetectorState.TripInProgress, at: Date) -> Bool {
+        guard let motion = state.lastMotion, motion.isConfidentlyStoppedInTraffic else { return false }
+        return at.timeIntervalSince(trip.slowSince ?? trip.lastMovingAt) < config.maxTrafficHold
     }
 
-    /// Whether a fix while stopped means the drive carried on. Crawling counts, unless Core
-    /// Motion recently said the user is on foot or on a bike.
-    private func resumes(at speed: Double, at time: Date) -> Bool {
+    /// No fixes at all (tunnel, dead zone, a jam behind the distance filter) don't end the
+    /// trip while Core Motion says "automotive", for up to `maxTrafficHold`.
+    private func heldByMotion(_ trip: DetectorState.TripInProgress, at: Date) -> Bool {
+        guard let motion = state.lastMotion, motion.isConfidentDriving else { return false }
+        return at.timeIntervalSince(trip.slowSince ?? trip.lastMovingAt) < config.maxTrafficHold
+    }
+
+    /// Whether a fix while stopped means the drive carried on: clearly driving speed, or a
+    /// crawl while Core Motion says automotive (never walking or jogging pace on its own).
+    private func resumes(at speed: Double) -> Bool {
         if speed > config.drivingSpeed { return true }
-        guard speed >= config.stoppedSpeed else { return false }
-        if let motion = state.lastMotion, let received = state.lastMotionReceivedAt,
-           time.timeIntervalSince(received) <= config.motionFreshness,
-           !motion.kinds.isDisjoint(with: [.walking, .running, .cycling]) {
-            return false
-        }
-        return true
+        guard speed >= config.stoppedSpeed, let motion = state.lastMotion else { return false }
+        return motion.isConfidentDriving
     }
 
     /// Start of the confident-automotive run at the end of `samples` (oldest first).
@@ -628,28 +746,30 @@ public struct TripDetector: Sendable {
         }
     }
 
-    /// Persist on every phase change, a new last stop, and every 30th trip point: enough to
-    /// resume after a relaunch without writing once a second while driving.
-    private func shouldPersist(before: DetectorState) -> Bool {
+    /// Persist on every phase change or new last stop, and otherwise at most every
+    /// `persistInterval` while anything changes, so a relaunch loses at most a few seconds.
+    private func shouldPersist(before: DetectorState, at: Date) -> Bool {
         guard state != before else { return false }
         if state.phase.kind != before.phase.kind || state.lastStop != before.lastStop { return true }
-        switch state.phase {
-        case let .driving(t), let .stopping(t, _): return t.points.count % 30 == 0
-        case let .candidate(c): return c.fixes.count <= 1
-        case .idle: return true
+        guard let last = state.lastPersistedAt else { return true }
+        return at.timeIntervalSince(last) >= config.persistInterval
+    }
+}
+
+extension DetectionEvent {
+    /// When the event happened, as far as the detector is concerned.
+    var time: Date {
+        switch self {
+        case let .wake(_, at), let .relaunched(at), let .timerFired(_, at),
+             let .authorizationChanged(_, _, at), let .assistedStart(at), let .assistedStop(at):
+            return at
+        case let .fix(_, at), let .motion(_, at), let .motionHistory(_, at), let .visit(_, at):
+            return at
         }
     }
 }
 
-extension DetectorState.Phase {
-    enum Kind { case idle, candidate, driving, stopping }
-
-    var kind: Kind {
-        switch self {
-        case .idle: return .idle
-        case .candidate: return .candidate
-        case .driving: return .driving
-        case .stopping: return .stopping
-        }
-    }
+extension LocationFix {
+    /// Speed as iOS reported it, or nil when unknown.
+    var reportedSpeed: Double? { hasValidSpeed ? speed : nil }
 }

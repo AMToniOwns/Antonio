@@ -54,6 +54,22 @@ struct Scenario {
         }
     }
 
+    /// A parked phone indoors: no speed, poor accuracy, and the location hopping around within
+    /// `radius` metres of where the car stopped.
+    mutating func drift(seconds: Int, every: Int = 10, radius: Double = 30, accuracy: Double = 40) {
+        let centre = position
+        var elapsed = 0, step = 0
+        while elapsed < seconds {
+            now += TimeInterval(every)
+            elapsed += every
+            step += 1
+            let offset = (step % 2 == 0 ? radius : -radius) / Self.metresPerDegreeLatitude
+            let jittered = Coordinate(latitude: centre.latitude + offset, longitude: centre.longitude)
+            send(.fix(LocationFix(timestamp: now, coordinate: jittered, horizontalAccuracy: accuracy), receivedAt: now))
+        }
+        position = centre
+    }
+
     /// Parked with a distance filter: time passes and nothing is delivered.
     mutating func park(seconds: TimeInterval) {
         now += seconds

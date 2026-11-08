@@ -18,20 +18,25 @@
 |---|---|
 | `startLive` / `stopLive` | start or stop the live layer (Phase 0 §3.2). Both are idempotent. |
 | `queryMotionHistory(from:)` | `queryActivityStarting(from:to: now)`, then reply with `.motionHistory` |
-| `runRecovery` | run `RecoveryPlanner.recover` over 7 days of history, with known trips from the store; save the results as `recovered`, unconfirmed journeys |
+| `runRecovery` | run `RecoveryPlanner.recover` over 7 days of history. Known trips are the stored ones plus any trip in progress (from its start to now). Save results as `recovered`, unconfirmed journeys. A launch caused by a location event requests this twice (`.relaunched` then `.wake`), so ignore a request within 60 s of the last. |
 | `setStopRegion` | replace the single `CLMonitor` last-stop condition (only when the region A/B arm is on) |
 | `scheduleTimer(id, at:)` | one timer per `TimerID`; a new schedule replaces the old one. A time in the past fires as soon as possible. If the process is suspended and the timer is missed, nothing is lost: the detector also checks elapsed time on the next fix, motion or relaunch. |
 | `cancelTimer(id)` | cancel the timer, if one is scheduled |
-| `persist(state)` | write atomically to the `LocalOnly` store before handling the next event. Writes may be coalesced, but the latest state must be on disk within 5 s. |
-| `emitTrip` | save as a `detected` journey: estimate `needsEstimate` gaps and the lead-in with `MKDirections`, then set `startDateLocal`, `detectionVersion` and the polyline |
+| `persist(state)` | write atomically to the `LocalOnly` store. The detector asks on every phase change and at most every `persistInterval` (5 s) otherwise, so a relaunch loses at most a few seconds. If a stored state fails to decode (e.g. after an update changed its shape, see `schemaVersion`), start from `DetectorState()`; recovery fills the gap. |
+| `emitTrip` | ignore it if a journey with the same `TripSegment.id` exists (a crash between `emitTrip` and `persist` re-emits it), else save as a `detected` journey: estimate `needsEstimate` gaps and the lead-in with `MKDirections`, then set `startDateLocal`, `detectionVersion` and the polyline |
 | `notify` | a local notification, plus a dashboard banner (Phase 0 §3.4) |
 | `log` | append to the tracking log (JSON lines, 7 days, ≤ 5 MB), alongside the event that caused it |
 
 ## Tracking log and replay
 
-The adapter writes every event it sends to the tracking log, using `EventLog.encode`, with diagnostics interleaved. The debug timeline exports this file. `TripDetector.replay(EventLog.decode(file), from: initialState)` reproduces every decision exactly, which is how a tester's problem drive becomes a regression test.
+At each launch the adapter starts a log session with the restored state, then writes every event it sends, using `EventLog.encode(session:events:)`, with diagnostics interleaved. The debug timeline exports this file. `EventLog.decodeSession` plus `TripDetector.replay` reproduces every decision exactly, step by step, which is what the timeline shows,, which is how a tester's problem drive becomes a regression test.
 
 ## Known limits (verify in the test run)
+
+- `queryActivityStarting(from:)`: does it return the activity already in progress at `from`, with its original start date? If not, `startHint` can't reach back more than 5 minutes and recovery's lead-in allowance matters more. **(verify)**
+- What does Core Motion report in a van stopped for 10+ minutes: automotive + stationary, or stationary alone? This decides whether long jams hold. **(verify)**
+- Derived speed from GPS jitter: measure false resumes and false fast fixes while parked indoors.
+- Linux CI needs `tzdata` for `Europe/London`. The official Swift images include it.
 
 - Persisting the whole points array is quadratic over a long drive. An hour at 1 Hz is about 120 writes averaging 1,800 points. If MetricKit shows this costs battery, switch to a checkpoint plus an append-only point log.
 - Fixes delivered more than 10 s late are dropped as stale. The tracking log counts these `fixRejected(stale)` events. If background batching causes many of them, raise `maxFixAge` for batched deliveries.

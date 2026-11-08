@@ -61,7 +61,19 @@ public struct MotionSample: Hashable, Codable, Sendable {
         self.confidence = confidence
     }
 
+    private enum CodingKeys: String, CodingKey { case startDate, kinds, confidence }
+
+    /// Kinds are written sorted, so the same events always produce byte-identical logs.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(startDate, forKey: .startDate)
+        try c.encode(kinds.map(\.rawValue).sorted(), forKey: .kinds)
+        try c.encode(confidence, forKey: .confidence)
+    }
+
     var isConfidentDriving: Bool { kinds.contains(.automotive) && confidence >= .medium }
+    /// In a vehicle and not moving: lights, a jam.
+    var isConfidentlyStoppedInTraffic: Bool { isConfidentDriving && kinds.contains(.stationary) }
 }
 
 /// A Core Location visit. `departure` is nil while the phone is still there.
