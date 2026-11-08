@@ -6,7 +6,7 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 | Stage | Window | Deliverable | Status |
 |---|---|---|---|
 | 0. Setup | 26 Oct – 1 Nov | Repo, RateEngine package with D7 tests | Council approved (5/5, round 3). Exit gate open: `swift test` green |
-| 1. Detection (now Phase 1a/1b, see docs/phase0) | 11 Nov – 2 Dec | TripDetection package (frozen end of week), prototype app with debug timeline | Not started |
+| 1. Detection (now Phase 1a/1b, see docs/phase0) | 11 Nov – 2 Dec | TripDetection package (frozen at 1b), prototype app with debug timeline | TripDetection written (td-0.1.0), council review pending; not compiled yet |
 | 2. Test run | from 3 Dec | 200 reference drives, 21+ days, odometer-checked | Not started |
 | 2b. v1 in parallel | 3 Dec – 8 Jan | Core Data store, review screen, exports, paywall | Not started |
 | 3. Go/no-go | ~24 Dec – 6 Jan | Report against the thresholds | Not started |
