@@ -1,6 +1,6 @@
 # Phase 0: product and technical discovery
 
-Status: **council approved (5/5, round 6). Awaiting owner approval.** Phase 1 does not start until the decisions below are made.
+Status: **approved.** The council approved it 5/5 in round 6, and the owner approved it on 8 Nov 2026. The owner accepted D-A to D-F as recommended. The owner builds on their own Mac. The test run spans Christmas. Testers are unpaid volunteers, so we recruit 10–12 to get at least 6 finishing (see [../testers/](../testers/)).
 
 This pack answers the *Mile Log — Master Product & Development Specification* and reconciles it with the council-approved *UK Mileage Log — Build Plan*. Where the two disagree, this pack sets out both positions and recommends one.
 

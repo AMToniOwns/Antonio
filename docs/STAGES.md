@@ -20,6 +20,8 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 | 2026-10-24 | 10,000-mile threshold counted across all vehicles by default (`thresholdScope` in `rates.json`; per-vehicle also supported and tested) | Matches HMRC's example and can only under-claim. Still to confirm with HMRC or an accountant. |
 | 2026-10-24 | Accounting periods crossing tax years: price the whole period's miles at each tax year's rates, then apportion by days | The plan's verified fact from BIM75005. |
 | 2026-10-24 | Motorcycle miles don't count towards the car/van threshold | The 24p rate has no threshold. |
+| 2026-11-08 | Phase 0 approved: no accounts or server in v1; free unlimited logging, Pro for £ totals and exports; GPS trails kept 30 days on the phone; tracking first; free basic CSV; no trial at first | Owner, after the council's 5/5 approval |
+| 2026-11-08 | The owner builds on their own Mac; the test run spans Christmas (from ~3 Dec, hard stop 2 Jan); testers are unpaid volunteers, recruiting 10–12 | Owner |
 | 2026-10-26 | Home-screen running total covers the user's accounting period (year end set once in setup, default 5 April) | Matches what they file. |
 | 2026-10-26 | Tax years after the last published rates use the latest rates and are flagged provisional (`ratesConfirmedThroughTaxYear`) | Keeps the total useful without hiding that HMRC hasn't confirmed it. |
 | 2026-10-26 | CSV exports have one line per trip; per-trip pennies reconcile exactly to the claim total (largest remainder) | FreeAgent's mileage import and audit trail. |
@@ -33,7 +35,7 @@ Expansionist, Outsider, Executor) and passes only on a unanimous approve vote.
 
 - [ ] Request the D-U-N-S number (critical path for the company Apple account)
 - [ ] Ask an accountant, before the go/no-go (~24 Dec): (a) is the 10,000-mile threshold across all vehicles or per vehicle; (b) is the apportionment method right for years not ending 5 April (31 Dec example: 10,000 miles → £5,239.73 vs £4,500 by trip date); (c) do miles on actual-costs vehicles count towards the threshold (currently no); (d) for a year not ending 5 April, is the 10,000 miles counted over the accounting year (as coded) or per tax year; (e) does a short first period get the full 10,000 miles (currently yes); (f) we assume no one elects out of treating a 31 March – 4 April year end as 5 April — fine?
-- [ ] Recruit 8 testers (at least 3 real sole traders) — by 25 Nov, see docs/phase0/README.md "Owner actions"
+- [ ] Recruit 10–12 unpaid testers (at least 3 real sole traders), so that 6 or more finish. Due 25 Nov. Use docs/testers/recruitment-message.md
 
 ## Council log
 
