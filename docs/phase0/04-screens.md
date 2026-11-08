@@ -25,7 +25,8 @@ Business name and business type are asked later in Settings, or the first time a
 - **Review card (top, only when needed):** "3 trips to review." Swipe right for Business, left for Personal, tap for details.
 - **Sync health line** (shown only when there's a problem): "iCloud is off. Your trips are only on this iPhone. Export a backup."
 - **Tax-year card:** business miles for the accounting period (everyone), the £ claimed so far (paid users), a progress bar to 10,000 miles showing the 55p and 25p bands, and "8,214 miles left at 55p". A provisional badge appears if the rates are unconfirmed; the rate-split note appears only when `needsRateSplit`.
-- **Tracking health line:** "Tracking on". Warning variants: "Location set to While Using — trips may be missed", "Precise Location off", "Last trip detected 9 days ago".
+- **Tracking health line:** "Tracking on". Warning variants: "This iPhone isn't tracking trips — *Work iPhone* is. Tap to switch", "Location set to While Using — trips may be missed", "Precise Location off", "Last trip detected 9 days ago".
+- **Conflicts** (rare): "2 copies of a trip disagree — choose one" (§2.2 rule 3).
 - **Recent trips:** the last five.
 - **This month:** business vs personal miles (a bar).
 
@@ -42,7 +43,7 @@ Business name and business type are asked later in Settings, or the first time a
 - Each export writes a ClaimSnapshot.
 
 ### Settings
-Vehicles, Places & rules, Accounting year, Tracking (status, assisted mode, diagnostics export), Privacy (route detail on/off, delete location detail, export all data, delete all data), Subscription, About, and "This app is not tax advice".
+Vehicles, Places & rules, Accounting year, Tracking (status, which iPhone tracks and switching phones, this phone's name, assisted mode, diagnostics export), Privacy (route detail on/off, delete location detail, export all data, delete all data), Subscription, About, and "This app is not tax advice".
 
 ### Widget and Live Activity (Should: in v1 if time allows)
 - **Widget:** "1,234 business miles · 2 to review". It shows £ only for paid users. Tapping it opens the review screen.

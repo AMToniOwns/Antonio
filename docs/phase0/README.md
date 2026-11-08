@@ -61,7 +61,7 @@ This pack answers the *Mile Log — Master Product & Development Specification* 
 | Saved-place *rules* that pre-fill a trip's class | — | ✓ |
 | Snapshots, and "your figure changed since you exported it" alerts | — | ✓ |
 
-**What Pro sells:** free users can work out their claim themselves (miles × 55p, then 25p). Pro sells *not having to*: the £ figure kept up to date, files their software and accountant accept as they are, alerts when an exported figure changes, and rules that save taps. That's convenience, priced at about £3 a month. Whether it's enough is the plan's open bet (about a 23% chance of reaching the target). The month-12 target already assumes this. The alternative is the spec's journey-limited free tier. Free users would stop logging, and then have no history worth paying for at tax time.
+**What Pro sells:** free users can work out their claim themselves (miles × 55p, then 25p). Pro sells *not having to*: the £ figure kept up to date, files their software and accountant accept as they are, alerts when an exported figure changes, and rules that save taps. That's convenience, priced at about £3 a month. Whether it's enough is the plan's open bet: the council's own estimate in the build plan is about a 23% chance of reaching £135 a month within 12 months. The month-12 target already assumes this. The alternative is the spec's journey-limited free tier. Free users would stop logging, and then have no history worth paying for at tax time.
 
 **D-C. How long are detailed GPS trails kept?** *Recommended: 30 days after a trip is confirmed, on the phone only.*
 After that only a simplified route line and the start and end points remain. The cost is that old trips can't be re-measured, and future features such as CO₂ and fuel estimates can't use them. The alternative is to keep trails forever, which means more risk and more storage.
@@ -90,7 +90,8 @@ If trips can't be detected reliably even after one fix cycle, Mile Log stops bei
 | Recruit 8 testers (at least 3 sole traders); collect Apple IDs and consent | 25 Nov | Phase 1b |
 | Request a D-U-N-S number for the company Apple account | now (it can take weeks) | Phase 4 |
 | Accountant answers to the six questions in [../STAGES.md](../STAGES.md). They're written for the accountant, so forward them unchanged. | before go/no-go (~24 Dec) | launch |
-| Two iPhones for device checks (one on iOS 18, one on iOS 26), own or borrowed | 11 Nov | Phase 1a |
+| Two iPhones for device checks (one on iOS 18, one on iOS 26). A borrowed phone counts. | 11 Nov | Phase 1a |
+| At least 15 beta testers' Apple IDs (the 8 test-run testers plus 7) | ~12 Jan | Phase 4 |
 
 ## Questions for you
 

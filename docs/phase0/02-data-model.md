@@ -37,10 +37,11 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
 `rulesetID`, `timeZoneID` and `currency` cost nothing now and keep other countries possible later.
 
 **Tracking device.** `trackingDeviceID` names the one phone that detects trips, so someone with two iPhones on one Apple ID doesn't log every drive twice.
-- **The device ID** is a random UUID made on first launch and stored in the `LocalOnly` configuration. It is not `identifierForVendor`, which changes on reinstall. A reinstall therefore counts as a new device.
-- **On every launch**, if this phone isn't the tracking device, the app asks: "Track trips on this iPhone? (Your other iPhone, *name*, will stop.)" The prompt appears in onboarding, in Settings → Tracking, and on Today. When `trackingDeviceID` is empty (first install), the phone takes the role silently.
-- **Today's health line:** "This iPhone isn't tracking trips. Tap to switch." It replaces the slow "last trip 9 days ago" warning as the signal after a phone upgrade.
-- **The old phone** sees the change through sync and stops its wake layer.
+- **The device ID** is a random UUID made on first launch and stored in the **Keychain** with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. Because of that setting, it isn't carried over when a backup is restored to another phone. It also isn't `identifierForVendor`, which changes on reinstall. A reinstall, or a restore onto a new phone, therefore counts as a new device.
+- **Names:** the user names each phone (default "This iPhone"). `UIDevice.name` returns only "iPhone" on iOS 16 and later without a special entitlement, so it can't be used. Both the ID and the name are stored in Profile (`trackingDeviceID`, `trackingDeviceName`).
+- **When the app is opened**, if this phone isn't the tracking device, it asks: "Track trips on this iPhone? *Work iPhone* will stop." The choices are **Switch** and **Keep using Work iPhone**. A choice to keep the other phone is remembered on this phone, and the question then lives in Settings → Tracking. A brand-new install takes the role silently only once the first CloudKit import has finished (rule 7) and shows no other tracking phone.
+- **Today's health line:** "This iPhone isn't tracking trips — *Work iPhone* is. Tap to switch." It replaces the slow "last trip 9 days ago" warning as the first sign after a phone upgrade.
+- **The old phone** stops its wake layer *eventually*, after it imports the change. Silent pushes are throttled, so this can take a while. Until then, rule 2's deduplication prevents double counting.
 
 **Vehicle**
 `id, nickname, vehicleClass (carOrVan|motorcycle), make?, model?, registration?, expenseMethod (flatRate|actualCosts), capitalAllowancesClaimed (Bool), isDefault (Bool), archivedAt?`
@@ -68,19 +69,28 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
 | detectionVersion | String | TripDetection build that produced it (frozen-package audit) |
 | routePolyline | Data? | simplified (Douglas–Peucker, ~25 m tolerance), for the map |
 | pointsPurgeAfter | Date? | see 2.4 |
-| mergedIntoID | UUID? | split/merge history |
+| mergedIntoID | UUID? | set only by a *user* merge (history); never by deduplication |
 
-**Duplicates** (council D6) are removed in code after every local write and every CloudKit import:
-1. **The same ID** arriving twice through sync: merge, newest `updatedAt` wins.
-2. **The same drive recorded twice:** two trips are treated as one when their time ranges overlap by more than 50% of the shorter trip, whatever device or source they came from. The winner is picked the same way on every device:
-   1. a confirmed or manual trip beats a detected one, and a detected trip beats a recovered one;
-   2. on a tie, the trip with the earliest `createdAt` wins;
-   3. if that also ties, the lowest UUID wins.
+**Duplicates** (council D6). Two different things are kept apart here. A *user merge* is something the user does, and it is stored. *Deduplication* is something the app works out, and it is **never stored in a synced field**. Keeping the two apart is what stops two phones from fighting over which copy is the duplicate.
 
-   The loser is marked `mergedIntoID` and kept, never silently deleted. If the loser was confirmed, its classification and purpose are copied onto the winner first, unless the winner already has its own. A trip is never merged into a trip that has itself been merged; the chain is followed to its root first. Because the result is the same on every device, two phones importing each other's copy reach the same answer.
-3. **What counts:** RateEngine input, totals, exports and the review list all **exclude any trip with `mergedIntoID` set**.
-4. **Totals** are calculated, never synced, so a duplicate that slips through for a moment can't corrupt a stored total.
-5. **Profile** is meant to be a single row, but CloudKit has no unique constraints, so two phones can each create one. The oldest `createdAt` wins, then the lowest UUID. Fields set only on the losing row are copied across before it is tombstoned.
+1. **The same ID arriving twice through sync.** CloudKit resolves it field by field, and the newest write wins.
+2. **The same drive recorded twice is derived on each pass, never stored.** After every local write and every CloudKit import, the app rebuilds overlap groups from the current set of trips. A trip joins a group when its time range overlaps another trip's by more than 50% of the shorter trip, whatever device or source each came from. Trips that are deleted (`deletedAt` set), `inProgress`, or user-merged (`mergedIntoID` set) are left out of the grouping. Each group then gets one **representative**:
+   - The rank order is: confirmed, then manual, then detected or assisted, then recovered.
+   - If two trips share the top rank, the earliest `createdAt` wins, then the lowest UUID.
+   - The answer is stored only in a `LocalOnly` cache, `suppressedBy`, which is rebuilt from scratch on every pass.
+
+   Because nothing about deduplication syncs, two phones can't merge each other's copy or form a loop. If one copy is later edited (for example, confirmed on the other phone), the next pass simply picks again. Deduplication undoes itself automatically if trips stop overlapping.
+3. **Conflicting confirmations.** If a group holds two *confirmed* trips with different classification, purpose or miles, the app doesn't pick one. The group counts for nothing until the user resolves it. Today shows "2 copies of a trip disagree — choose one", and the user's choice tombstones the other copy. This can only make a claim smaller, never larger. A pre-filled class (from a rule or a default) never counts as a confirmation.
+4. **What counts.** RateEngine input, totals, exports and the review list use only group representatives that are confirmed, plus ungrouped confirmed trips. They exclude suppressed trips, user-merged trips, tombstoned trips and unresolved conflict groups.
+5. **User merge and split** are explicit and stored.
+   - *Merge*: the earlier trip is extended, and the later one is tombstoned with `mergedIntoID` set as history.
+   - *Split*: the parent is tombstoned and two child trips are created. Their time ranges don't overlap each other, and the tombstoned parent is excluded from grouping, so the children are never merged back into it.
+   - Undo restores the tombstoned trips.
+6. **Totals** are calculated, never synced, so a duplicate that slips through briefly can't corrupt a stored total.
+7. **Profile duplicates.** CloudKit has no unique constraints, so two phones could each create a Profile.
+   - **Avoid them:** on first launch with iCloud available, onboarding shows "Looking for your Mile Log data…" and waits for the first CloudKit import (up to 30 s). Only then does it create a Profile.
+   - **If they happen anyway:** the oldest `createdAt` wins, then the lowest UUID. Each Profile field also has a `…SetAt` date. Any field the user set on the losing row, more recently than on the winner, is copied across before the losing row is tombstoned. Defaults never overwrite a choice the user made.
+   - **Test:** a two-phone race (both offline, one confirms, one merges, then sync) is a required test in Phase 2.
 
 **RoutePoint** (`LocalOnly`): `journeyID, timestamp, lat, lon, horizontalAccuracy, speed?`, batch-inserted and deleted at purge. Because it never syncs, a second device shows only the simplified route.
 

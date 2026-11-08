@@ -93,6 +93,7 @@ Every phase ends with passing tests and a council review. The next phase doesn't
 | Apple Developer Program membership on a personal account; prototype bundle ID `…milelog.prototype` | 18 Nov | TestFlight. External testers need Beta App Review (1–2 days); internal testers must be App Store Connect users |
 | 8 testers' Apple IDs and signed consent notices | 25 Nov | Phase 1b |
 | D-U-N-S number, then the company Apple account | before Phase 4 | the real app ships under the company |
+| At least 15 beta testers' Apple IDs (the 8 testers plus 7) | ~12 Jan | the Phase 4 beta |
 
 | Phase | Dates (if the gate clears on time) | Exit criteria (testable) |
 |---|---|---|
@@ -100,7 +101,7 @@ Every phase ends with passing tests and a council review. The next phase doesn't
 | 1a Foundation and tracking on the developer's phone | 11–25 Nov | RateEngine and TripDetection tests green on CI. The app records 10 real drives on the developer's phone with distance within 5% of the odometer. The §3.6 device checklist is run, with results recorded. No crash on relaunch or force-quit. |
 | 1b Prototype on testers' phones | 26 Nov – 2 Dec | TestFlight build installed on 8 phones. Testers' consent signed. TripDetection tagged and frozen. |
 | Detection test run | from 3 Dec; ends at 200 or more drives and 21 or more days; hard stop 2 Jan | The plan's metrics are reported |
-| 2 v1 features (in parallel) | 3 Dec – 8 Jan (Christmas off) | Onboarding, store, sync, journeys and Today work on a device, with tests green |
+| 2 v1 features (in parallel) | 3 Dec – 8 Jan (Christmas off) | Onboarding, store, sync, journeys and Today work on a device, with tests green. The two-phone dedupe race test passes. **Before the first production CloudKit schema deploy:** the schema is reviewed as additive-only, and the encrypted-field list (§2.2) is signed off. Neither can be changed later. |
 | Go/no-go | ~24 Dec – 6 Jan | The plan's thresholds |
 | (Fix cycle, if needed) | +2 weeks fix, +remeasure | It takes priority over all other work |
 | 3 Reporting and commercial | 11–22 Jan | Every export reconciles to the claim total to the penny. Sandbox purchase, restore and expiry all work. |
