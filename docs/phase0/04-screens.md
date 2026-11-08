@@ -26,7 +26,7 @@ Business name and business type are asked later in Settings, or the first time a
 - **Sync health line** (shown only when there's a problem): "iCloud is off. Your trips are only on this iPhone. Export a backup."
 - **Tax-year card:** business miles for the accounting period (everyone), the £ claimed so far (paid users), a progress bar to 10,000 miles showing the 55p and 25p bands, and "8,214 miles left at 55p". A provisional badge appears if the rates are unconfirmed; the rate-split note appears only when `needsRateSplit`.
 - **Tracking health line:** "Tracking on". Warning variants: "This iPhone isn't tracking trips — *Work iPhone* is. Tap to switch", "Location set to While Using — trips may be missed", "Precise Location off", "Last trip detected 9 days ago".
-- **Conflicts** (rare): "2 copies of a trip disagree — choose one" (§2.2 rule 3).
+- **Conflicts** (rare): "2 copies of a trip disagree — choose one" (§2.2 rule 4).
 - **Recent trips:** the last five.
 - **This month:** business vs personal miles (a bar).
 
