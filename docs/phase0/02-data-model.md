@@ -73,7 +73,7 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
 | routePolyline | Data? | simplified (Douglas–Peucker, ~25 m tolerance), for the map |
 | pointsPurgeAfter | Date? | see 2.4 |
 | mergedIntoID | UUID? | set only by a *user* merge (history); never by deduplication |
-| userEditedFields | [String] | fields the user changed by hand (late-edit rule 6, Profile-style protection) |
+| userEditedFields | [String] | fields the user changed by hand (late-edit rule 6). When copies from different phones merge, these sets are **combined**, so an edit on either phone is protected |
 
 **Duplicates** (council D6). Two different things are kept apart here. A *user merge* is something the user does, and it is stored. *Deduplication* is something the app works out, and it is **never stored in a synced field**. Keeping the two apart is what stops two phones from fighting over which copy is the duplicate.
 
@@ -95,7 +95,7 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
    - if it is **confirmed**, it is flagged "Possible duplicate — check" and **not counted** until the user keeps or deletes it.
 
    This can only make a claim smaller, never larger.
-4. **Conflicting confirmations.** Two confirmed copies in one pair disagree when their classification or vehicle differs, or their miles differ by more than 5%. A different vehicle matters because cars and motorcycles have different rates. If only the purpose or notes differ, the representative's are kept, and the other copy's text is shown on the trip detail under "Other copy said…". They then count for nothing until the user picks one ("2 copies of a trip disagree — choose one"), and the choice tombstones the other copy. Within that tolerance, the representative wins silently. A class pre-filled by a rule or a default never counts as a confirmation.
+4. **Conflicting confirmations.** Two confirmed copies in one pair disagree when their classification or vehicle differs, or their miles differ by more than 5%. A different vehicle matters because cars and motorcycles have different rates. Copies that disagree count for nothing until the user picks one ("2 copies of a trip disagree — choose one"), and the choice tombstones the other copy. Otherwise the representative wins silently. If only the purpose or notes differ, the representative's are kept, and the other copy's text is shown on the trip detail under "Other copy said…". A class pre-filled by a rule or a default never counts as a confirmation.
 5. **What each screen uses.**
    - **Counted** (RateEngine, totals, exports): confirmed representatives and confirmed unmatched trips, but not trips flagged under rules 3 or 4.
    - **Review list:** unconfirmed representatives and unconfirmed unmatched trips, plus anything flagged under rules 3 or 4.
@@ -104,7 +104,7 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
 6. **User merge and split** are explicit and stored.
    - **Merge:** the earlier trip is extended. Its original end, distance and polyline are kept in a `mergeUndo` record, and the later trip is tombstoned with `mergedIntoID`.
    - **Merge undo:** restores the earlier trip from `mergeUndo` and un-tombstones the later trip. It's available while the tombstone exists, which is 30 days.
-   - **Split:** the parent is tombstoned and two children are created, with time ranges that don't overlap.
+   - **Split:** the parent is tombstoned and two children are created, with time ranges that don't overlap. Both children get **the same `createdAt`**, so they always sit next to each other in the full order; another trip can't fall between them.
    - **Split undo:** tombstones the children and restores the parent.
    - **Edits that arrive late:** an edit can sync in for a trip that is already merged away, for example a purpose set offline on the other phone. The app shows "An edit arrived for a merged trip". It copies the edit to the surviving trip for any field the user hasn't edited there. Journey keeps a `userEditedFields` set for this.
 7. **Totals** are calculated, never synced, so a duplicate that slips through briefly can't corrupt a stored total.
@@ -112,6 +112,7 @@ All IDs are UUIDs generated on the device. Every `Synced` entity carries `create
    - **Avoid them:** on first launch with iCloud available, onboarding shows "Looking for your Mile Log data…" and waits for the first CloudKit import (up to 30 s). Only then does it create a Profile.
    - **If they happen anyway:** the oldest `createdAt` wins, then the lowest UUID. Each Profile field also has a `…SetAt` date. Any field the user set on the losing row, more recently than on the winner, is copied across before the losing row is tombstoned. Defaults never overwrite a choice the user made.
    - **Test:** a two-phone race (both offline, one confirms, one merges, then sync) is a required test in Phase 2.
+   - **Further required Phase 2 tests:** a split whose child `createdAt` falls either side of another phone's copy; flagged confirmed trips used as coverage; a late edit arriving after a merged trip's tombstone has been purged (expected result: it's kept as a new unconfirmed trip in the review list, never lost); and `userEditedFields` merging across phones.
 
 **RoutePoint** (`LocalOnly`): `journeyID, timestamp, lat, lon, horizontalAccuracy, speed?`, batch-inserted and deleted at purge. Because it never syncs, a second device shows only the simplified route.
 
